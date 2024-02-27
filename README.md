@@ -7,7 +7,7 @@ Transperancy settings will be applied on window unfocus.
 Python should be pre installed.
 
 ## Usage 
-Just use the `pomodoro.exe` file for windows. No installation is required.
+Just use the `pomodoro.exe` file for windows. It's inside of the `dist` folder. No installation is required.
 
 Otherwise run the `pomodoro.py` file.
 ```py
