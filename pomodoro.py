@@ -6,11 +6,11 @@ unfocus_transparency = 0.8
 label_font_size = 14
 
 
-def on_focus_in():
+def on_focus_in(event):
     root.wm_attributes("-alpha", 1.0)  # Set window fully opaque on focus
 
 
-def on_focus_out():
+def on_focus_out(event):
     global unfocus_transparency
     root.wm_attributes("-alpha", unfocus_transparency)
 
