@@ -3,15 +3,16 @@ from tkinter import simpledialog, ttk
 
 default_pomodoro_time = 25  # Default time in minutes
 unfocus_transparency = 0.8
+label_font_size = 14
 
 
-def on_focus_in(event):
-    event.widget.attributes("-alpha", 1.0)  # Set window fully opaque on focus
+def on_focus_in():
+    root.wm_attributes("-alpha", 1.0)  # Set window fully opaque on focus
 
 
-def on_focus_out(event):
+def on_focus_out():
     global unfocus_transparency
-    event.widget.attributes("-alpha", unfocus_transparency)
+    root.wm_attributes("-alpha", unfocus_transparency)
 
 
 def open_settings_dialog():
@@ -110,7 +111,9 @@ def create_app():
 
     timer_running = False
 
-    timer_label = ttk.Label(root, text="Set timer and start")
+    timer_label = ttk.Label(
+        root, text="Set timer and start", font=("Arial", label_font_size, "bold")
+    )
     timer_label.pack(pady=15)
 
     validate_command = (root.register(is_integer), "%P")
@@ -130,10 +133,23 @@ def create_app():
     continue_btn = ttk.Button(root, text="Continue", command=continue_pomodoro)
     stop_btn = ttk.Button(root, text="Stop", command=stop_pomodoro)
 
+    def increase_font():
+        global label_font_size  # Modify global variable
+        label_font_size = min(label_font_size + 2, 32)  # Limit max size to 32
+        timer_label.configure(font=("Arial", label_font_size, "bold"))
+
+    def decrease_font():
+        global label_font_size  # Modify global variable
+        label_font_size = max(label_font_size - 2, 8)  # Limit min size to 8
+        timer_label.configure(font=("Arial", label_font_size, "bold"))
+
     # Transparency settings
-    settings_menu = tk.Menu(root, tearoff=0)
-    root.config(menu=settings_menu)
-    settings_menu.add_command(label="🔧", command=open_settings_dialog)
+    menu_bar = tk.Menu(root, tearoff=0)
+    root.config(menu=menu_bar)
+
+    menu_bar.add_command(label="🔧", command=open_settings_dialog)
+    menu_bar.add_command(label="➕", command=increase_font)
+    menu_bar.add_command(label="➖", command=decrease_font)
 
     root.bind("<FocusIn>", on_focus_in)
     root.bind("<FocusOut>", on_focus_out)
