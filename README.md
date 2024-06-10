@@ -1,7 +1,13 @@
 # Pomodoro Timer
-A simple pomodoro timer that always stays on top of all windows. It includes basic transparency settings.
+A simple pomodoro timer featuring useful functionalities. 
 
-Transperancy settings will be applied on window unfocus.
+### Features
+- Simplest interface
+- Always stays on top of all windows
+- Resizable
+- Changable pomodoro time
+- Includes basic transparency settings, applies on window unfocus.
+- Font size can be modified 
 
 ### Dependency
 Python should be pre installed.
