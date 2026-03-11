@@ -24,6 +24,11 @@ Otherwise, run the `pomodoro.py` file using `uv`:
 uv run pomodoro.py
 ```
 
+## Running tests
+```bash
+uv run pytest
+```
+
 ## Screenshots
 Application:
 
