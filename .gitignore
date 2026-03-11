@@ -17,8 +17,6 @@ build/
 dist/
 *.egg-info/
 .eggs/
-*.spec
-pomodoro.spec
 pomodoro.pkg
 
 # Settings / local config

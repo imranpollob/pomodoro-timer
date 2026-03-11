@@ -37,7 +37,7 @@ Settings:
 
 ## Making an installer
 ```bash
-uv run pyinstaller --onefile --windowed --icon=stopwatch.ico pomodoro.py
+uv run pyinstaller --clean --noconfirm pomodoro.spec
 ```
 
 #### Icon attribution

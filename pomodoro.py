@@ -3,8 +3,9 @@ import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 import json
 import os
+import sys
 
-SETTINGS_FILE = 'settings.json'
+SETTINGS_FILE = "settings.json"
 FONT_FAMILY = "Helvetica"
 
 settings = {
@@ -15,7 +16,7 @@ settings = {
     "sound_enabled": True,
     "unfocus_transparency": 0.8,
     "label_font_size": 42,
-    "timer_mode": "Pomodoro"
+    "timer_mode": "Pomodoro",
 }
 
 current_mode = "Work"
@@ -23,50 +24,91 @@ completed_pomodoros = 0
 timer_running = False
 pomodoro_time = 0
 
+
 def load_settings():
     global settings
     if os.path.exists(SETTINGS_FILE):
         try:
-            with open(SETTINGS_FILE, 'r') as f:
+            with open(SETTINGS_FILE, "r") as f:
                 loaded = json.load(f)
                 settings.update(loaded)
         except Exception as e:
             print(f"Error loading settings: {e}")
 
+
 def save_settings():
     try:
-        with open(SETTINGS_FILE, 'w') as f:
+        with open(SETTINGS_FILE, "w") as f:
             json.dump(settings, f, indent=4)
     except Exception as e:
         print(f"Error saving settings: {e}")
 
+
 load_settings()
+
+
+def get_resource_path(filename):
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, filename)
+
+
+def apply_window_icon(window):
+    icon_path = get_resource_path("stopwatch.ico")
+    if os.path.exists(icon_path):
+        try:
+            window.iconbitmap(icon_path)
+        except tk.TclError:
+            pass
+
 
 def on_focus_in(event):
     root.wm_attributes("-alpha", 1.0)
 
+
 def on_focus_out(event):
     root.wm_attributes("-alpha", settings["unfocus_transparency"])
 
+
 def open_settings_dialog():
     settings_win = tb.Toplevel(root)
+    apply_window_icon(settings_win)
     settings_win.title("Settings")
-    settings_win.geometry("320x360")
+    settings_win.geometry("320x400")
     settings_win.attributes("-topmost", True)
-    
+
     def create_slider(parent, label_text, var, from_, to, is_float=False):
         frame = tb.Frame(parent)
         frame.pack(pady=5, fill="x", padx=20)
-        
-        val_label = tb.Label(frame, text=f"{label_text} {var.get():.1f}" if is_float else f"{label_text} {var.get()}", font=(FONT_FAMILY, 10))
+
+        val_label = tb.Label(
+            frame,
+            text=(
+                f"{label_text} {var.get():.1f}"
+                if is_float
+                else f"{label_text} {var.get()}"
+            ),
+            font=(FONT_FAMILY, 10),
+        )
         val_label.pack(anchor="w")
-        
+
         def update_label(val):
             v = float(val) if is_float else int(float(val))
             var.set(v)
-            val_label.config(text=f"{label_text} {v:.1f}" if is_float else f"{label_text} {v}")
+            val_label.config(
+                text=f"{label_text} {v:.1f}" if is_float else f"{label_text} {v}"
+            )
 
-        scale = tb.Scale(frame, from_=from_, to=to, orient="horizontal", command=update_label, bootstyle="info")
+        scale = tb.Scale(
+            frame,
+            from_=from_,
+            to=to,
+            orient="horizontal",
+            command=update_label,
+            bootstyle="info",
+        )
         scale.set(var.get())
         scale.pack(fill="x", pady=2)
         return scale
@@ -84,11 +126,18 @@ def open_settings_dialog():
     create_slider(settings_win, "Long Break Interval:", interval_var, 1, 10)
 
     sound_var = tk.BooleanVar(value=settings["sound_enabled"])
-    tb.Checkbutton(settings_win, text="Play Sound on Finish", variable=sound_var, bootstyle="success, round-toggle").pack(pady=10)
+    tb.Checkbutton(
+        settings_win,
+        text="Play Sound on Finish",
+        variable=sound_var,
+        bootstyle="success, round-toggle",
+    ).pack(pady=10)
 
     trans_var = tk.DoubleVar(value=settings["unfocus_transparency"])
-    create_slider(settings_win, "Unfocused Transparency:", trans_var, 0.1, 1.0, is_float=True)
-    
+    create_slider(
+        settings_win, "Unfocused Transparency:", trans_var, 0.1, 1.0, is_float=True
+    )
+
     def save():
         try:
             settings["work_time"] = int(work_var.get())
@@ -109,16 +158,22 @@ def open_settings_dialog():
                         set_mode(current_mode)
             settings_win.destroy()
         except ValueError:
-            pass # Ignore invalid inputs
+            pass  # Ignore invalid inputs
 
-    tb.Button(settings_win, text="Save Settings", command=save, bootstyle="success", width=20).pack(pady=15)
+    tb.Button(
+        settings_win, text="Save Settings", command=save, bootstyle="success", width=20
+    ).pack(pady=15)
+
 
 def set_mode(mode):
     global current_mode, pomodoro_time
     current_mode = mode
     if mode == "Work":
         pomodoro_time = settings["work_time"] * 60
-        mode_label.config(text=f"{mode} {completed_pomodoros + 1}/{settings['long_break_interval']}", bootstyle="primary")
+        mode_label.config(
+            text=f"{mode} {completed_pomodoros + 1}/{settings['long_break_interval']}",
+            bootstyle="primary",
+        )
     elif mode == "Short Break":
         pomodoro_time = settings["short_break"] * 60
         mode_label.config(text=mode, bootstyle="success")
@@ -128,23 +183,25 @@ def set_mode(mode):
     elif mode == "Stopwatch":
         pomodoro_time = 0
         mode_label.config(text="Stopwatch", bootstyle="secondary")
-    
+
     minutes, seconds = divmod(pomodoro_time, 60)
     timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
+
 
 def start_pomodoro():
     global timer_running
     if not timer_running:
         timer_running = True
         start_btn.config(text="Pause", command=pause_pomodoro, bootstyle="warning")
-        
+
         # Disable mode toggle buttons while timer is running
         for child in mode_frame.winfo_children():
             child.configure(state="disabled")
-            
+
         update_timer()
     else:
         pause_pomodoro()
+
 
 def pause_pomodoro():
     global timer_running
@@ -152,6 +209,7 @@ def pause_pomodoro():
     start_btn.pack_forget()
     continue_btn.pack(pady=5)
     stop_btn.pack(pady=5)
+
 
 def continue_pomodoro():
     global timer_running
@@ -162,24 +220,26 @@ def continue_pomodoro():
     start_btn.pack(pady=5)
     update_timer()
 
+
 def stop_pomodoro():
     global timer_running
     timer_running = False
-    
+
     continue_btn.pack_forget()
     stop_btn.pack_forget()
-    
+
     start_btn.config(text="Start", command=start_pomodoro, bootstyle="primary")
     start_btn.pack(pady=5)
-    
+
     # Re-enable mode toggle buttons
     for child in mode_frame.winfo_children():
         child.configure(state="normal")
-        
+
     if settings.get("timer_mode") == "Stopwatch":
         set_mode("Stopwatch")
     else:
         set_mode("Work")
+
 
 def update_timer():
     global pomodoro_time, timer_running, completed_pomodoros, current_mode
@@ -198,37 +258,44 @@ def update_timer():
             else:
                 if settings["sound_enabled"]:
                     root.bell()
-                
+
                 timer_running = False
-                start_btn.config(text="Start", command=start_pomodoro, bootstyle="primary")
-                
+                start_btn.config(
+                    text="Start", command=start_pomodoro, bootstyle="primary"
+                )
+
                 # Re-enable mode toggle buttons on completion
                 for child in mode_frame.winfo_children():
                     child.configure(state="normal")
-                    
+
                 if current_mode == "Work":
                     completed_pomodoros += 1
-                    if completed_pomodoros > 0 and completed_pomodoros % settings["long_break_interval"] == 0:
+                    if (
+                        completed_pomodoros > 0
+                        and completed_pomodoros % settings["long_break_interval"] == 0
+                    ):
                         set_mode("Long Break")
                     else:
                         set_mode("Short Break")
                 else:
                     if current_mode == "Long Break":
-                        completed_pomodoros = 0 # reset tracking after long break 
+                        completed_pomodoros = 0  # reset tracking after long break
                     set_mode("Work")
+
 
 def create_app():
     global root, mode_label, timer_label, start_btn, continue_btn, stop_btn, mode_frame, mode_var
     root = tb.Window(themename="superhero")
-    root.title("Pomodoro Timer")
-    root.geometry("260x200")
+    apply_window_icon(root)
+    root.title("Pomodoro")
+    root.geometry("290x290")
     root.attributes("-topmost", True)
 
     # Added toggle mode frame to main UI
     mode_var = tk.StringVar(value=settings.get("timer_mode", "Pomodoro"))
     mode_frame = tb.Frame(root)
     mode_frame.pack(pady=(12, 0))
-    
+
     def on_mode_change(*args):
         if not timer_running:
             settings["timer_mode"] = mode_var.get()
@@ -237,11 +304,15 @@ def create_app():
                 set_mode("Stopwatch")
             else:
                 set_mode("Work")
-                
+
     mode_var.trace_add("write", on_mode_change)
 
-    tb.Radiobutton(mode_frame, text="Pomodoro", variable=mode_var, value="Pomodoro").pack(side="left", padx=5)
-    tb.Radiobutton(mode_frame, text="Stopwatch", variable=mode_var, value="Stopwatch").pack(side="left", padx=5)
+    tb.Radiobutton(
+        mode_frame, text="Pomodoro", variable=mode_var, value="Pomodoro"
+    ).pack(side="left", padx=5)
+    tb.Radiobutton(
+        mode_frame, text="Stopwatch", variable=mode_var, value="Stopwatch"
+    ).pack(side="left", padx=5)
 
     mode_label = tb.Label(root, text="", font=(FONT_FAMILY, 12, "bold"))
     mode_label.pack(pady=(8, 0))
@@ -251,11 +322,17 @@ def create_app():
     )
     timer_label.pack(pady=0)
 
-    start_btn = tb.Button(root, text="Start", command=start_pomodoro, bootstyle="primary", width=12)
+    start_btn = tb.Button(
+        root, text="Start", command=start_pomodoro, bootstyle="primary", width=12
+    )
     start_btn.pack(pady=4)
 
-    continue_btn = tb.Button(root, text="Continue", command=continue_pomodoro, bootstyle="success", width=12)
-    stop_btn = tb.Button(root, text="Stop", command=stop_pomodoro, bootstyle="danger", width=12)
+    continue_btn = tb.Button(
+        root, text="Continue", command=continue_pomodoro, bootstyle="success", width=12
+    )
+    stop_btn = tb.Button(
+        root, text="Stop", command=stop_pomodoro, bootstyle="danger", width=12
+    )
 
     def increase_font():
         settings["label_font_size"] = min(settings["label_font_size"] + 2, 72)
@@ -277,13 +354,14 @@ def create_app():
     root.bind("<FocusIn>", on_focus_in)
     root.bind("<FocusOut>", on_focus_out)
     root.attributes("-alpha", settings["unfocus_transparency"])
-    
+
     if settings.get("timer_mode") == "Stopwatch":
         set_mode("Stopwatch")
     else:
         set_mode("Work")
 
     root.mainloop()
+
 
 if __name__ == "__main__":
     create_app()
