@@ -2,22 +2,25 @@
 A simple pomodoro timer featuring useful functionalities. 
 
 ### Features
+- Classic Pomodoro cycles: Work (25m), Short Break (5m), Long Break (15m)
+- Automatic break tracking (Long break after 4 work sessions)
+- Audio notifications on session completion
+- Dedicated settings window with persistent preferences (`settings.json`)
 - Simplest interface
 - Always stays on top of all windows
-- Resizable
-- Changable pomodoro time
-- Includes basic transparency settings, applies on window unfocus.
+- Includes basic transparency settings, applies on window unfocus
 - Font size can be modified 
 
-### Dependency
-Python should be pre installed.
+### Setup
+
+We use `uv` for dependency management. If you don't have it, install it from [here](https://docs.astral.sh/uv/getting-started/installation/).
 
 ## Usage 
 Just use the `pomodoro.exe` file for windows. It's inside of the `dist` folder. No installation is required.
 
-Otherwise run the `pomodoro.py` file.
+Otherwise, run the `pomodoro.py` file using `uv`:
 ```py
-python pomodoro.py
+uv run pomodoro.py
 ```
 
 ## Screenshots
@@ -30,10 +33,9 @@ Transperancy settings:
 ![App screen](settings.jpg)
 
 
-## Making a installer
+## Making an installer
 ```bash
-pip install pyinstaller
-pyinstaller --onefile --windowed --icon=stopwatch.ico pomodoro.py
+uv run pyinstaller --onefile --windowed --icon=stopwatch.ico pomodoro.py
 ```
 
 #### Icon attribution
