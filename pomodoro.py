@@ -48,31 +48,43 @@ def on_focus_out(event):
 def open_settings_dialog():
     settings_win = tk.Toplevel(root)
     settings_win.title("Settings")
-    settings_win.geometry("260x300")
+    settings_win.geometry("300x420")
     settings_win.attributes("-topmost", True)
     
-    ttk.Label(settings_win, text="Work Time (min):").pack(pady=2)
+    def create_slider(parent, label_text, var, from_, to, is_float=False):
+        frame = ttk.Frame(parent)
+        frame.pack(pady=4, fill="x", padx=15)
+        
+        val_label = ttk.Label(frame, text=f"{label_text} {var.get():.1f}" if is_float else f"{label_text} {var.get()}")
+        val_label.pack(anchor="w")
+        
+        def update_label(val):
+            v = float(val) if is_float else int(float(val))
+            var.set(v)
+            val_label.config(text=f"{label_text} {v:.1f}" if is_float else f"{label_text} {v}")
+
+        scale = ttk.Scale(frame, from_=from_, to=to, orient="horizontal", command=update_label)
+        scale.set(var.get())
+        scale.pack(fill="x")
+        return scale
+
     work_var = tk.IntVar(value=settings["work_time"])
-    ttk.Entry(settings_win, textvariable=work_var, width=10).pack(pady=2)
+    create_slider(settings_win, "Work Time (min):", work_var, 1, 60)
 
-    ttk.Label(settings_win, text="Short Break (min):").pack(pady=2)
     short_var = tk.IntVar(value=settings["short_break"])
-    ttk.Entry(settings_win, textvariable=short_var, width=10).pack(pady=2)
+    create_slider(settings_win, "Short Break (min):", short_var, 1, 30)
 
-    ttk.Label(settings_win, text="Long Break (min):").pack(pady=2)
     long_var = tk.IntVar(value=settings["long_break"])
-    ttk.Entry(settings_win, textvariable=long_var, width=10).pack(pady=2)
+    create_slider(settings_win, "Long Break (min):", long_var, 1, 60)
 
-    ttk.Label(settings_win, text="Long Break Interval:").pack(pady=2)
     interval_var = tk.IntVar(value=settings["long_break_interval"])
-    ttk.Entry(settings_win, textvariable=interval_var, width=10).pack(pady=2)
+    create_slider(settings_win, "Long Break Interval:", interval_var, 1, 10)
 
     sound_var = tk.BooleanVar(value=settings["sound_enabled"])
     ttk.Checkbutton(settings_win, text="Play Sound on Finish", variable=sound_var).pack(pady=5)
 
-    ttk.Label(settings_win, text="Unfocused Transparency (0.1 - 1.0):").pack(pady=2)
     trans_var = tk.DoubleVar(value=settings["unfocus_transparency"])
-    ttk.Entry(settings_win, textvariable=trans_var, width=10).pack(pady=2)
+    create_slider(settings_win, "Unfocused Transparency:", trans_var, 0.1, 1.0, is_float=True)
     
     def save():
         try:
