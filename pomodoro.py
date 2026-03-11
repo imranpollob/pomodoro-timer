@@ -1,9 +1,11 @@
 import tkinter as tk
-from tkinter import ttk
+import ttkbootstrap as tb
+from ttkbootstrap.constants import *
 import json
 import os
 
 SETTINGS_FILE = 'settings.json'
+FONT_FAMILY = "Helvetica"
 
 settings = {
     "work_time": 25,
@@ -12,7 +14,7 @@ settings = {
     "long_break_interval": 4,
     "sound_enabled": True,
     "unfocus_transparency": 0.8,
-    "label_font_size": 14
+    "label_font_size": 42
 }
 
 current_mode = "Work"
@@ -46,16 +48,16 @@ def on_focus_out(event):
     root.wm_attributes("-alpha", settings["unfocus_transparency"])
 
 def open_settings_dialog():
-    settings_win = tk.Toplevel(root)
+    settings_win = tb.Toplevel(root)
     settings_win.title("Settings")
-    settings_win.geometry("300x420")
+    settings_win.geometry("320x360")
     settings_win.attributes("-topmost", True)
     
     def create_slider(parent, label_text, var, from_, to, is_float=False):
-        frame = ttk.Frame(parent)
-        frame.pack(pady=4, fill="x", padx=15)
+        frame = tb.Frame(parent)
+        frame.pack(pady=5, fill="x", padx=20)
         
-        val_label = ttk.Label(frame, text=f"{label_text} {var.get():.1f}" if is_float else f"{label_text} {var.get()}")
+        val_label = tb.Label(frame, text=f"{label_text} {var.get():.1f}" if is_float else f"{label_text} {var.get()}", font=(FONT_FAMILY, 10))
         val_label.pack(anchor="w")
         
         def update_label(val):
@@ -63,9 +65,9 @@ def open_settings_dialog():
             var.set(v)
             val_label.config(text=f"{label_text} {v:.1f}" if is_float else f"{label_text} {v}")
 
-        scale = ttk.Scale(frame, from_=from_, to=to, orient="horizontal", command=update_label)
+        scale = tb.Scale(frame, from_=from_, to=to, orient="horizontal", command=update_label, bootstyle="info")
         scale.set(var.get())
-        scale.pack(fill="x")
+        scale.pack(fill="x", pady=2)
         return scale
 
     work_var = tk.IntVar(value=settings["work_time"])
@@ -81,7 +83,7 @@ def open_settings_dialog():
     create_slider(settings_win, "Long Break Interval:", interval_var, 1, 10)
 
     sound_var = tk.BooleanVar(value=settings["sound_enabled"])
-    ttk.Checkbutton(settings_win, text="Play Sound on Finish", variable=sound_var).pack(pady=5)
+    tb.Checkbutton(settings_win, text="Play Sound on Finish", variable=sound_var, bootstyle="success, round-toggle").pack(pady=10)
 
     trans_var = tk.DoubleVar(value=settings["unfocus_transparency"])
     create_slider(settings_win, "Unfocused Transparency:", trans_var, 0.1, 1.0, is_float=True)
@@ -102,30 +104,29 @@ def open_settings_dialog():
         except ValueError:
             pass # Ignore invalid inputs
 
-    ttk.Button(settings_win, text="Save", command=save).pack(pady=10)
+    tb.Button(settings_win, text="Save Settings", command=save, bootstyle="success", width=20).pack(pady=15)
 
 def set_mode(mode):
     global current_mode, pomodoro_time
     current_mode = mode
     if mode == "Work":
         pomodoro_time = settings["work_time"] * 60
+        mode_label.config(text=f"{mode} {completed_pomodoros + 1}/{settings['long_break_interval']}", bootstyle="primary")
     elif mode == "Short Break":
         pomodoro_time = settings["short_break"] * 60
+        mode_label.config(text=mode, bootstyle="success")
     elif mode == "Long Break":
         pomodoro_time = settings["long_break"] * 60
+        mode_label.config(text=mode, bootstyle="info")
     
     minutes, seconds = divmod(pomodoro_time, 60)
     timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
-    if mode == "Work":
-        mode_label.config(text=f"{mode} {completed_pomodoros + 1}/{settings['long_break_interval']}")
-    else:
-        mode_label.config(text=mode)
 
 def start_pomodoro():
     global timer_running
     if not timer_running:
         timer_running = True
-        start_btn.config(text="Pause", command=pause_pomodoro)
+        start_btn.config(text="Pause", command=pause_pomodoro, bootstyle="warning")
         update_timer()
     else:
         pause_pomodoro()
@@ -142,7 +143,7 @@ def continue_pomodoro():
     timer_running = True
     continue_btn.pack_forget()
     stop_btn.pack_forget()
-    start_btn.config(text="Pause", command=pause_pomodoro)
+    start_btn.config(text="Pause", command=pause_pomodoro, bootstyle="warning")
     start_btn.pack(pady=5)
     update_timer()
 
@@ -153,7 +154,7 @@ def stop_pomodoro():
     continue_btn.pack_forget()
     stop_btn.pack_forget()
     
-    start_btn.config(text="Start", command=start_pomodoro)
+    start_btn.config(text="Start", command=start_pomodoro, bootstyle="primary")
     start_btn.pack(pady=5)
     set_mode(current_mode)
 
@@ -170,7 +171,7 @@ def update_timer():
                 root.bell()
             
             timer_running = False
-            start_btn.config(text="Start", command=start_pomodoro)
+            start_btn.config(text="Start", command=start_pomodoro, bootstyle="primary")
             
             if current_mode == "Work":
                 completed_pomodoros += 1
@@ -185,33 +186,33 @@ def update_timer():
 
 def create_app():
     global root, mode_label, timer_label, start_btn, continue_btn, stop_btn
-    root = tk.Tk()
+    root = tb.Window(themename="superhero")
     root.title("Pomodoro Timer")
-    root.geometry("200x160")
+    root.geometry("260x200")
     root.attributes("-topmost", True)
 
-    mode_label = ttk.Label(root, text="", font=("Arial", 10))
-    mode_label.pack(pady=5)
+    mode_label = tb.Label(root, text="", font=(FONT_FAMILY, 12, "bold"))
+    mode_label.pack(pady=(12, 5))
 
-    timer_label = ttk.Label(
-        root, text="", font=("Arial", settings["label_font_size"], "bold")
+    timer_label = tb.Label(
+        root, text="", font=(FONT_FAMILY, settings["label_font_size"], "bold")
     )
     timer_label.pack(pady=5)
 
-    start_btn = ttk.Button(root, text="Start", command=start_pomodoro)
+    start_btn = tb.Button(root, text="Start", command=start_pomodoro, bootstyle="primary", width=12)
     start_btn.pack(pady=5)
 
-    continue_btn = ttk.Button(root, text="Continue", command=continue_pomodoro)
-    stop_btn = ttk.Button(root, text="Stop", command=stop_pomodoro)
+    continue_btn = tb.Button(root, text="Continue", command=continue_pomodoro, bootstyle="success", width=12)
+    stop_btn = tb.Button(root, text="Stop", command=stop_pomodoro, bootstyle="danger", width=12)
 
     def increase_font():
-        settings["label_font_size"] = min(settings["label_font_size"] + 2, 32)
-        timer_label.configure(font=("Arial", settings["label_font_size"], "bold"))
+        settings["label_font_size"] = min(settings["label_font_size"] + 2, 72)
+        timer_label.configure(font=(FONT_FAMILY, settings["label_font_size"], "bold"))
         save_settings()
 
     def decrease_font():
         settings["label_font_size"] = max(settings["label_font_size"] - 2, 8)
-        timer_label.configure(font=("Arial", settings["label_font_size"], "bold"))
+        timer_label.configure(font=(FONT_FAMILY, settings["label_font_size"], "bold"))
         save_settings()
 
     menu_bar = tk.Menu(root, tearoff=0)
@@ -228,7 +229,6 @@ def create_app():
     set_mode("Work")
 
     root.mainloop()
-
 
 if __name__ == "__main__":
     create_app()

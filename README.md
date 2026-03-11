@@ -26,11 +26,11 @@ uv run pomodoro.py
 ## Screenshots
 Application:
 
-![App screen](app.png)
+![App](app.png)
 
-Transperancy settings:
+Settings:
 
-![App screen](settings.png)
+![Settings](settings.png)
 
 
 ## Making an installer
