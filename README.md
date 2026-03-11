@@ -4,12 +4,13 @@ A simple pomodoro timer featuring useful functionalities.
 ### Features
 - Classic Pomodoro cycles: Work (25m), Short Break (5m), Long Break (15m)
 - Automatic break tracking (Long break after 4 work sessions)
+- Endless Timer/Stopwatch Mode for long sessions
 - Audio notifications on session completion
 - Dedicated settings window with persistent preferences (`settings.json`)
-- Simplest interface
+- Modern, clean Dark Theme UI via `ttkbootstrap`
+- Adjustable typography for a customizable desktop clock feel
 - Always stays on top of all windows
 - Includes basic transparency settings, applies on window unfocus
-- Font size can be modified 
 
 ### Setup
 
@@ -26,7 +27,8 @@ uv run pomodoro.py
 ## Screenshots
 Application:
 
-![App](app.png)
+![screen-1](screen-1.png)
+![screen-2](screen-2.png)
 
 Settings:
 

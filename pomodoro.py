@@ -14,7 +14,8 @@ settings = {
     "long_break_interval": 4,
     "sound_enabled": True,
     "unfocus_transparency": 0.8,
-    "label_font_size": 42
+    "label_font_size": 42,
+    "timer_mode": "Pomodoro"
 }
 
 current_mode = "Work"
@@ -99,7 +100,13 @@ def open_settings_dialog():
             save_settings()
             root.attributes("-alpha", settings["unfocus_transparency"])
             if not timer_running:
-                set_mode(current_mode)
+                if settings["timer_mode"] == "Stopwatch":
+                    set_mode("Stopwatch")
+                else:
+                    if current_mode == "Stopwatch":
+                        set_mode("Work")
+                    else:
+                        set_mode(current_mode)
             settings_win.destroy()
         except ValueError:
             pass # Ignore invalid inputs
@@ -118,6 +125,9 @@ def set_mode(mode):
     elif mode == "Long Break":
         pomodoro_time = settings["long_break"] * 60
         mode_label.config(text=mode, bootstyle="info")
+    elif mode == "Stopwatch":
+        pomodoro_time = 0
+        mode_label.config(text="Stopwatch", bootstyle="secondary")
     
     minutes, seconds = divmod(pomodoro_time, 60)
     timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
@@ -127,6 +137,11 @@ def start_pomodoro():
     if not timer_running:
         timer_running = True
         start_btn.config(text="Pause", command=pause_pomodoro, bootstyle="warning")
+        
+        # Disable mode toggle buttons while timer is running
+        for child in mode_frame.winfo_children():
+            child.configure(state="disabled")
+            
         update_timer()
     else:
         pause_pomodoro()
@@ -156,51 +171,88 @@ def stop_pomodoro():
     
     start_btn.config(text="Start", command=start_pomodoro, bootstyle="primary")
     start_btn.pack(pady=5)
-    set_mode(current_mode)
+    
+    # Re-enable mode toggle buttons
+    for child in mode_frame.winfo_children():
+        child.configure(state="normal")
+        
+    if settings.get("timer_mode") == "Stopwatch":
+        set_mode("Stopwatch")
+    else:
+        set_mode("Work")
 
 def update_timer():
     global pomodoro_time, timer_running, completed_pomodoros, current_mode
     if timer_running:
-        if pomodoro_time > 0:
+        if current_mode == "Stopwatch":
             minutes, seconds = divmod(pomodoro_time, 60)
             timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
-            pomodoro_time -= 1
+            pomodoro_time += 1
             root.after(1000, update_timer)
         else:
-            if settings["sound_enabled"]:
-                root.bell()
-            
-            timer_running = False
-            start_btn.config(text="Start", command=start_pomodoro, bootstyle="primary")
-            
-            if current_mode == "Work":
-                completed_pomodoros += 1
-                if completed_pomodoros > 0 and completed_pomodoros % settings["long_break_interval"] == 0:
-                    set_mode("Long Break")
-                else:
-                    set_mode("Short Break")
+            if pomodoro_time > 0:
+                minutes, seconds = divmod(pomodoro_time, 60)
+                timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
+                pomodoro_time -= 1
+                root.after(1000, update_timer)
             else:
-                if current_mode == "Long Break":
-                    completed_pomodoros = 0 # reset tracking after long break 
-                set_mode("Work")
+                if settings["sound_enabled"]:
+                    root.bell()
+                
+                timer_running = False
+                start_btn.config(text="Start", command=start_pomodoro, bootstyle="primary")
+                
+                # Re-enable mode toggle buttons on completion
+                for child in mode_frame.winfo_children():
+                    child.configure(state="normal")
+                    
+                if current_mode == "Work":
+                    completed_pomodoros += 1
+                    if completed_pomodoros > 0 and completed_pomodoros % settings["long_break_interval"] == 0:
+                        set_mode("Long Break")
+                    else:
+                        set_mode("Short Break")
+                else:
+                    if current_mode == "Long Break":
+                        completed_pomodoros = 0 # reset tracking after long break 
+                    set_mode("Work")
 
 def create_app():
-    global root, mode_label, timer_label, start_btn, continue_btn, stop_btn
+    global root, mode_label, timer_label, start_btn, continue_btn, stop_btn, mode_frame, mode_var
     root = tb.Window(themename="superhero")
     root.title("Pomodoro Timer")
     root.geometry("260x200")
     root.attributes("-topmost", True)
 
+    # Added toggle mode frame to main UI
+    mode_var = tk.StringVar(value=settings.get("timer_mode", "Pomodoro"))
+    mode_frame = tb.Frame(root)
+    mode_frame.pack(pady=(12, 0))
+    
+    def on_mode_change(*args):
+        if not timer_running:
+            settings["timer_mode"] = mode_var.get()
+            save_settings()
+            if settings["timer_mode"] == "Stopwatch":
+                set_mode("Stopwatch")
+            else:
+                set_mode("Work")
+                
+    mode_var.trace_add("write", on_mode_change)
+
+    tb.Radiobutton(mode_frame, text="Pomodoro", variable=mode_var, value="Pomodoro").pack(side="left", padx=5)
+    tb.Radiobutton(mode_frame, text="Stopwatch", variable=mode_var, value="Stopwatch").pack(side="left", padx=5)
+
     mode_label = tb.Label(root, text="", font=(FONT_FAMILY, 12, "bold"))
-    mode_label.pack(pady=(12, 5))
+    mode_label.pack(pady=(8, 0))
 
     timer_label = tb.Label(
         root, text="", font=(FONT_FAMILY, settings["label_font_size"], "bold")
     )
-    timer_label.pack(pady=5)
+    timer_label.pack(pady=0)
 
     start_btn = tb.Button(root, text="Start", command=start_pomodoro, bootstyle="primary", width=12)
-    start_btn.pack(pady=5)
+    start_btn.pack(pady=4)
 
     continue_btn = tb.Button(root, text="Continue", command=continue_pomodoro, bootstyle="success", width=12)
     stop_btn = tb.Button(root, text="Stop", command=stop_pomodoro, bootstyle="danger", width=12)
@@ -226,7 +278,10 @@ def create_app():
     root.bind("<FocusOut>", on_focus_out)
     root.attributes("-alpha", settings["unfocus_transparency"])
     
-    set_mode("Work")
+    if settings.get("timer_mode") == "Stopwatch":
+        set_mode("Stopwatch")
+    else:
+        set_mode("Work")
 
     root.mainloop()
 
