@@ -5,7 +5,7 @@ a = Analysis(
     ['pomodoro.py'],
     pathex=[],
     binaries=[],
-    datas=[('stopwatch.ico', '.')],
+    datas=[('stopwatch.ico', '.'), ('complete.oga', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

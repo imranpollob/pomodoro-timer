@@ -89,7 +89,8 @@ def attach_fake_ui(monkeypatch):
     monkeypatch.setattr(pomodoro, "timer_label", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "start_btn", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "continue_btn", FakeWidget(), raising=False)
-    monkeypatch.setattr(pomodoro, "stop_btn", FakeWidget(), raising=False)
+    monkeypatch.setattr(pomodoro, "restart_btn", FakeWidget(), raising=False)
+    monkeypatch.setattr(pomodoro, "skip_btn", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "mode_frame", FakeFrame(), raising=False)
     return root
 
@@ -196,6 +197,7 @@ def test_update_timer_work_completion_moves_to_short_break(tmp_path, monkeypatch
     monkeypatch.setattr(pomodoro, "timer_running", True)
     monkeypatch.setattr(pomodoro, "current_mode", "Work")
     monkeypatch.setattr(pomodoro, "pomodoro_time", 0)
+    monkeypatch.setattr(pomodoro.sys, "platform", "win32")
     modes = []
     monkeypatch.setattr(pomodoro, "set_mode", lambda mode: modes.append(mode))
 
@@ -248,7 +250,7 @@ def test_update_timer_long_break_completion_resets_cycle(tmp_path, monkeypatch):
     assert modes == ["Work"]
 
 
-def test_stop_pomodoro_resets_stopwatch_mode(tmp_path, monkeypatch):
+def test_restart_pomodoro_resets_stopwatch_mode(tmp_path, monkeypatch):
     reset_state(tmp_path, monkeypatch)
     attach_fake_ui(monkeypatch)
     monkeypatch.setattr(pomodoro, "timer_running", True)
@@ -256,14 +258,32 @@ def test_stop_pomodoro_resets_stopwatch_mode(tmp_path, monkeypatch):
     modes = []
     monkeypatch.setattr(pomodoro, "set_mode", lambda mode: modes.append(mode))
 
-    pomodoro.stop_pomodoro()
+    pomodoro.restart_pomodoro()
 
     assert pomodoro.timer_running is False
     assert modes == ["Stopwatch"]
     assert pomodoro.continue_btn.pack_forget_calls == 1
-    assert pomodoro.stop_btn.pack_forget_calls == 1
+    assert pomodoro.restart_btn.pack_forget_calls == 1
     assert pomodoro.start_btn.config_calls[-1] == {
         "text": "Start",
         "command": pomodoro.start_pomodoro,
         "bootstyle": "primary",
     }
+
+
+def test_skip_break_moves_to_work_mode(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    attach_fake_ui(monkeypatch)
+    monkeypatch.setattr(pomodoro, "current_mode", "Short Break")
+    monkeypatch.setattr(pomodoro, "timer_running", True)
+    modes = []
+    monkeypatch.setattr(pomodoro, "set_mode", lambda mode: modes.append(mode))
+
+    pomodoro.skip_break()
+
+    assert pomodoro.timer_running is False
+    assert pomodoro.continue_btn.pack_forget_calls == 1
+    assert pomodoro.restart_btn.pack_forget_calls == 1
+    assert pomodoro.skip_btn.pack_forget_calls == 1
+    assert modes == ["Work"]
+

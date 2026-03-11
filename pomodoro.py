@@ -184,6 +184,17 @@ def set_mode(mode):
         pomodoro_time = 0
         mode_label.config(text="Stopwatch", bootstyle="secondary")
 
+    if mode in ["Short Break", "Long Break"]:
+        try:
+            skip_btn.pack(pady=4)
+        except NameError:
+            pass
+    else:
+        try:
+            skip_btn.pack_forget()
+        except NameError:
+            pass
+
     minutes, seconds = divmod(pomodoro_time, 60)
     timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
 
@@ -208,25 +219,41 @@ def pause_pomodoro():
     timer_running = False
     start_btn.pack_forget()
     continue_btn.pack(pady=5)
-    stop_btn.pack(pady=5)
+    restart_btn.pack(pady=5)
+    if current_mode in ["Short Break", "Long Break"]:
+        try:
+            skip_btn.pack_forget()
+            skip_btn.pack(pady=4)
+        except NameError:
+            pass
 
 
 def continue_pomodoro():
     global timer_running
     timer_running = True
     continue_btn.pack_forget()
-    stop_btn.pack_forget()
+    restart_btn.pack_forget()
     start_btn.config(text="Pause", command=pause_pomodoro, bootstyle="warning")
     start_btn.pack(pady=5)
+    if current_mode in ["Short Break", "Long Break"]:
+        try:
+            skip_btn.pack_forget()
+            skip_btn.pack(pady=4)
+        except NameError:
+            pass
     update_timer()
 
 
-def stop_pomodoro():
+def restart_pomodoro():
     global timer_running
     timer_running = False
 
-    continue_btn.pack_forget()
-    stop_btn.pack_forget()
+    try:
+        continue_btn.pack_forget()
+        restart_btn.pack_forget()
+        skip_btn.pack_forget()
+    except NameError:
+        pass
 
     start_btn.config(text="Start", command=start_pomodoro, bootstyle="primary")
     start_btn.pack(pady=5)
@@ -238,7 +265,31 @@ def stop_pomodoro():
     if settings.get("timer_mode") == "Stopwatch":
         set_mode("Stopwatch")
     else:
-        set_mode("Work")
+        set_mode(current_mode)
+
+
+def skip_break():
+    global timer_running, completed_pomodoros
+    timer_running = False
+
+    try:
+        continue_btn.pack_forget()
+        restart_btn.pack_forget()
+        skip_btn.pack_forget()
+    except NameError:
+        pass
+
+    start_btn.config(text="Start", command=start_pomodoro, bootstyle="primary")
+    start_btn.pack(pady=4)
+
+    # Re-enable mode toggle buttons
+    for child in mode_frame.winfo_children():
+        child.configure(state="normal")
+
+    if current_mode == "Long Break":
+        completed_pomodoros = 0
+        
+    set_mode("Work")
 
 
 def update_timer():
@@ -257,7 +308,11 @@ def update_timer():
                 root.after(1000, update_timer)
             else:
                 if settings["sound_enabled"]:
-                    root.bell()
+                    if sys.platform == "linux":
+                        sound_file = get_resource_path("complete.oga")
+                        os.system(f'paplay "{sound_file}" 2>/dev/null &')
+                    else:
+                        root.bell()
 
                 timer_running = False
                 start_btn.config(
@@ -284,7 +339,7 @@ def update_timer():
 
 
 def create_app():
-    global root, mode_label, timer_label, start_btn, continue_btn, stop_btn, mode_frame, mode_var
+    global root, mode_label, timer_label, start_btn, continue_btn, restart_btn, skip_btn, mode_frame, mode_var
     root = tb.Window(themename="superhero")
     apply_window_icon(root)
     root.title("Pomodoro")
@@ -330,8 +385,11 @@ def create_app():
     continue_btn = tb.Button(
         root, text="Continue", command=continue_pomodoro, bootstyle="success", width=12
     )
-    stop_btn = tb.Button(
-        root, text="Stop", command=stop_pomodoro, bootstyle="danger", width=12
+    restart_btn = tb.Button(
+        root, text="Restart", command=restart_pomodoro, bootstyle="danger", width=12
+    )
+    skip_btn = tb.Button(
+        root, text="Skip Break", command=skip_break, bootstyle="secondary", width=12
     )
 
     def increase_font():
