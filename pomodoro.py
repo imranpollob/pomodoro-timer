@@ -4,8 +4,17 @@ from ttkbootstrap.constants import *
 import json
 import os
 import sys
+from pathlib import Path
 
-SETTINGS_FILE = "settings.json"
+# Use a proper config directory for settings
+if sys.platform == "win32":
+    CONFIG_DIR = Path(os.environ.get("APPDATA", Path.home())) / "pomodoro-timer"
+else:
+    CONFIG_DIR = Path.home() / ".config" / "pomodoro-timer"
+
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+SETTINGS_FILE = CONFIG_DIR / "settings.json"
+
 FONT_FAMILY = "Helvetica"
 
 settings = {

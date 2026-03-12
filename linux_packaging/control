@@ -1,0 +1,9 @@
+Package: pomodoro-timer
+Version: 0.1.1
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Imran Pollob <imranpollob@example.com>
+Description: Modern Pomodoro Timer and Stopwatch
+ A beautiful Pomodoro timer built with Python and ttkbootstrap,
+ featuring an endless timer/stopwatch mode and customizable themes.

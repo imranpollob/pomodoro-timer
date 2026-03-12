@@ -1,48 +1,53 @@
 # Pomodoro Timer
-A simple pomodoro timer featuring useful functionalities. 
+A simple pomodoro timer featuring useful functionalities.
 
-### Features
+## Features
 - Classic Pomodoro cycles: Work (25m), Short Break (5m), Long Break (15m)
-- Automatic break tracking (Long break after 4 work sessions)
-- Endless Timer/Stopwatch Mode for long sessions
+- Automatic break tracking (long break after 4 work sessions)
+- Endless Timer/Stopwatch mode for long sessions
+- Skip button to skip break sessions
 - Audio notifications on session completion
-- Dedicated settings window with persistent preferences (`settings.json`)
-- Modern, clean Dark Theme UI via `ttkbootstrap`
-- Adjustable typography for a customizable desktop clock feel
-- Always stays on top of all windows
-- Includes basic transparency settings, applies on window unfocus
-
-### Setup
-
-We use `uv` for dependency management. If you don't have it, install it from [here](https://docs.astral.sh/uv/getting-started/installation/).
-
-## Usage 
-Just use the `pomodoro.exe` file for windows. It's inside of the `dist` folder. No installation is required.
-
-Otherwise, run the `pomodoro.py` file using `uv`:
-```py
-uv run pomodoro.py
-```
-
-## Running tests
-```bash
-uv run pytest
-```
+- Settings window with persistent preferences (saved to `~/.config/pomodoro-timer/`)
+- Modern dark theme UI via `ttkbootstrap`
+- Adjustable font size for a customizable desktop clock feel
+- Always on top, with transparency when unfocused
 
 ## Screenshots
-Application:
-
+App:
 ![screen-1](screen-1.png)
 ![screen-2](screen-2.png)
 
 Settings:
+![settings](settings.png)
 
-![Settings](settings.png)
+## Setup
 
+We use `uv` for dependency management. Install it from [here](https://docs.astral.sh/uv/getting-started/installation/) if you don't have it.
 
-## Making an installer
+## Running
+
+### Run directly (all platforms)
+```bash
+uv run pomodoro.py
+```
+
+### Linux — Install as a desktop app (.deb)
+Build and install a native `.deb` package for full desktop integration:
+
+```bash
+bash build_deb.sh
+sudo dpkg -i pomodoro-timer_0.1.1_amd64.deb
+```
+
+### Windows — Build standalone executable
 ```bash
 uv run pyinstaller --clean --noconfirm pomodoro.spec
+```
+Then run `dist/pomodoro.exe`.
+
+## Running tests
+```bash
+uv run pytest
 ```
 
 #### Icon attribution

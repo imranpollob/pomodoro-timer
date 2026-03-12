@@ -19,9 +19,9 @@ dist/
 .eggs/
 pomodoro.pkg
 
-# Settings / local config
-settings.json
-.DS_Store
+# Debian packaging workspace and generated packages
+deb_workspace/
+*.deb
 
-# uv
-uv.lock
+# OS / editor
+.DS_Store

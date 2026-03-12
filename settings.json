@@ -1,0 +1,10 @@
+{
+    "work_time": 25,
+    "short_break": 2,
+    "long_break": 10,
+    "long_break_interval": 2,
+    "sound_enabled": true,
+    "unfocus_transparency": 0.8,
+    "label_font_size": 42,
+    "timer_mode": "Pomodoro"
+}

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Pomodoro Timer
+Comment=A modern Pomodoro Timer and Stopwatch
+Exec=/usr/bin/pomodoro
+Icon=pomodoro
+Terminal=false
+Type=Application
+Categories=Utility;Timer;
+Keywords=pomodoro;timer;stopwatch;
