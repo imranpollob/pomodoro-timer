@@ -2,23 +2,21 @@
 A simple pomodoro timer featuring useful functionalities.
 
 ## Features
-- Classic Pomodoro cycles: Work (25m), Short Break (5m), Long Break (15m)
-- Automatic break tracking (long break after 4 work sessions)
-- Endless Timer/Stopwatch mode for long sessions
-- Skip button to skip break sessions
+- Customizable Pomodoro cycles: Work (25m), Short Break (5m), Long Break (15m)
+- Endless Timer/Stopwatch mode for custom focus sessions
+- Daily Report with today's focus statistics
 - Audio notifications on session completion
-- Settings window with persistent preferences (saved to `~/.config/pomodoro-timer/`)
-- Modern dark theme UI via `ttkbootstrap`
 - Adjustable font size for a customizable desktop clock feel
 - Always on top, with transparency when unfocused
 
 ## Screenshots
-App:
+
 ![screen-1](screen-1.png)
 ![screen-2](screen-2.png)
 
-Settings:
 ![settings](settings.png)
+
+![report](report.png)
 
 ## Setup
 

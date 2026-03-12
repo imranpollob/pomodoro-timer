@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from datetime import datetime, date
 
 # Use a proper config directory for settings
 if sys.platform == "win32":
@@ -14,6 +15,7 @@ else:
 
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
+HISTORY_FILE = CONFIG_DIR / "history.json"
 
 FONT_FAMILY = "Helvetica"
 
@@ -32,6 +34,7 @@ current_mode = "Work"
 completed_pomodoros = 0
 timer_running = False
 pomodoro_time = 0
+stopwatch_start_time = None
 
 
 def load_settings():
@@ -54,6 +57,35 @@ def save_settings():
 
 
 load_settings()
+
+
+def load_history():
+    if HISTORY_FILE.exists():
+        try:
+            with open(HISTORY_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+
+def log_session(session_type, duration_seconds):
+    if duration_seconds < 10:
+        return  # Ignore very short sessions
+    history = load_history()
+    history.append(
+        {
+            "date": date.today().isoformat(),
+            "type": session_type,
+            "duration_seconds": int(duration_seconds),
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+        }
+    )
+    try:
+        with open(HISTORY_FILE, "w") as f:
+            json.dump(history, f, indent=4)
+    except Exception as e:
+        print(f"Error saving history: {e}")
 
 
 def get_resource_path(filename):
@@ -209,10 +241,14 @@ def set_mode(mode):
 
 
 def start_pomodoro():
-    global timer_running
+    global timer_running, stopwatch_start_time
     if not timer_running:
         timer_running = True
         start_btn.config(text="Pause", command=pause_pomodoro, bootstyle="warning")
+
+        # Track start time for stopwatch
+        if current_mode == "Stopwatch":
+            stopwatch_start_time = datetime.now()
 
         # Disable mode toggle buttons while timer is running
         for child in mode_frame.winfo_children():
@@ -228,7 +264,7 @@ def pause_pomodoro():
     timer_running = False
     start_btn.pack_forget()
     continue_btn.pack(pady=5)
-    restart_btn.pack(pady=5)
+    stop_btn.pack(pady=5)
     if current_mode in ["Short Break", "Long Break"]:
         try:
             skip_btn.pack_forget()
@@ -238,10 +274,13 @@ def pause_pomodoro():
 
 
 def continue_pomodoro():
-    global timer_running
+    global timer_running, stopwatch_start_time
     timer_running = True
+    # Re-start stopwatch tracking on continue
+    if current_mode == "Stopwatch":
+        stopwatch_start_time = datetime.now()
     continue_btn.pack_forget()
-    restart_btn.pack_forget()
+    stop_btn.pack_forget()
     start_btn.config(text="Pause", command=pause_pomodoro, bootstyle="warning")
     start_btn.pack(pady=5)
     if current_mode in ["Short Break", "Long Break"]:
@@ -253,13 +292,23 @@ def continue_pomodoro():
     update_timer()
 
 
-def restart_pomodoro():
-    global timer_running
+def stop_pomodoro():
+    global timer_running, stopwatch_start_time, pomodoro_time
     timer_running = False
+
+    # Log time spent depending on mode
+    if current_mode == "Stopwatch" and stopwatch_start_time is not None:
+        elapsed = (datetime.now() - stopwatch_start_time).total_seconds()
+        log_session("Stopwatch", elapsed)
+        stopwatch_start_time = None
+    elif current_mode == "Work":
+        # Calculate how much work time was actually spent
+        spent = settings["work_time"] * 60 - pomodoro_time
+        log_session("Work", spent)
 
     try:
         continue_btn.pack_forget()
-        restart_btn.pack_forget()
+        stop_btn.pack_forget()
         skip_btn.pack_forget()
     except NameError:
         pass
@@ -283,7 +332,7 @@ def skip_break():
 
     try:
         continue_btn.pack_forget()
-        restart_btn.pack_forget()
+        stop_btn.pack_forget()
         skip_btn.pack_forget()
     except NameError:
         pass
@@ -297,7 +346,7 @@ def skip_break():
 
     if current_mode == "Long Break":
         completed_pomodoros = 0
-        
+
     set_mode("Work")
 
 
@@ -334,6 +383,7 @@ def update_timer():
 
                 if current_mode == "Work":
                     completed_pomodoros += 1
+                    log_session("Work", settings["work_time"] * 60)
                     if (
                         completed_pomodoros > 0
                         and completed_pomodoros % settings["long_break_interval"] == 0
@@ -348,7 +398,7 @@ def update_timer():
 
 
 def create_app():
-    global root, mode_label, timer_label, start_btn, continue_btn, restart_btn, skip_btn, mode_frame, mode_var
+    global root, mode_label, timer_label, start_btn, continue_btn, stop_btn, skip_btn, mode_frame, mode_var
     root = tb.Window(themename="superhero")
     apply_window_icon(root)
     root.title("Pomodoro")
@@ -394,8 +444,8 @@ def create_app():
     continue_btn = tb.Button(
         root, text="Continue", command=continue_pomodoro, bootstyle="success", width=12
     )
-    restart_btn = tb.Button(
-        root, text="Restart", command=restart_pomodoro, bootstyle="danger", width=12
+    stop_btn = tb.Button(
+        root, text="Stop", command=stop_pomodoro, bootstyle="danger", width=12
     )
     skip_btn = tb.Button(
         root, text="Skip Break", command=skip_break, bootstyle="secondary", width=12
@@ -411,10 +461,87 @@ def create_app():
         timer_label.configure(font=(FONT_FAMILY, settings["label_font_size"], "bold"))
         save_settings()
 
+    def open_report_dialog():
+        today = date.today().isoformat()
+        history = load_history()
+        today_sessions = [s for s in history if s.get("date") == today]
+
+        work_sessions = [s for s in today_sessions if s["type"] == "Work"]
+        stopwatch_sessions = [s for s in today_sessions if s["type"] == "Stopwatch"]
+
+        total_work_secs = sum(s["duration_seconds"] for s in work_sessions)
+        total_sw_secs = sum(s["duration_seconds"] for s in stopwatch_sessions)
+        total_focus_secs = total_work_secs + total_sw_secs
+
+        num_work = len(work_sessions)
+        avg_work_secs = (total_work_secs // num_work) if num_work > 0 else 0
+
+        def fmt_time(secs):
+            h, rem = divmod(int(secs), 3600)
+            m, s = divmod(rem, 60)
+            if h > 0:
+                return f"{h}h {m}m {s}s"
+            elif m > 0:
+                return f"{m}m {s}s"
+            return f"{s}s"
+
+        report_win = tb.Toplevel(root)
+        apply_window_icon(report_win)
+        report_win.title("Daily Report")
+        report_win.geometry("300x280")
+        report_win.attributes("-topmost", True)
+        report_win.resizable(False, False)
+
+        tb.Label(
+            report_win,
+            text="📊 Daily Report",
+            font=(FONT_FAMILY, 14, "bold"),
+            bootstyle="primary",
+        ).pack(pady=(16, 4))
+
+        tb.Label(
+            report_win,
+            text=today,
+            font=(FONT_FAMILY, 9),
+            bootstyle="secondary",
+            foreground="white",
+        ).pack(pady=(0, 12))
+
+        # Stats frame
+        stats_frame = tb.Frame(report_win, padding=10)
+        stats_frame.pack(fill="x", padx=20)
+
+        def stat_row(label, value, style="default"):
+            row = tb.Frame(stats_frame)
+            row.pack(fill="x", pady=4)
+            tb.Label(row, text=label, font=(FONT_FAMILY, 10), foreground="white").pack(
+                side="left"
+            )
+            tb.Label(
+                row, text=value, font=(FONT_FAMILY, 10, "bold"), foreground="white"
+            ).pack(side="right")
+
+        tb.Separator(stats_frame).pack(fill="x", pady=(0, 8))
+        stat_row("🕐 Total Focus Time", fmt_time(total_focus_secs), "info")
+        total_sessions = len(today_sessions)
+        stat_row("💼 Total Sessions", str(total_sessions), "primary")
+        stat_row("⏱  Pomodoro Time", fmt_time(total_work_secs), "primary")
+        stat_row("⏩ Stopwatch Time", fmt_time(total_sw_secs), "success")
+        stat_row("📈 Avg Work Session", fmt_time(avg_work_secs), "warning")
+
+        if not today_sessions:
+            tb.Label(
+                report_win,
+                text="No sessions recorded today yet.",
+                font=(FONT_FAMILY, 9),
+                bootstyle="secondary",
+            ).pack(pady=10)
+
     menu_bar = tk.Menu(root, tearoff=0)
     root.config(menu=menu_bar)
 
     menu_bar.add_command(label="🔧", command=open_settings_dialog)
+    menu_bar.add_command(label="📊", command=open_report_dialog)
     menu_bar.add_command(label="➕", command=increase_font)
     menu_bar.add_command(label="➖", command=decrease_font)
 
