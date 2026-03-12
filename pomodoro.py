@@ -474,7 +474,6 @@ def create_app():
         total_focus_secs = total_work_secs + total_sw_secs
 
         num_work = len(work_sessions)
-        avg_work_secs = (total_work_secs // num_work) if num_work > 0 else 0
 
         def fmt_time(secs):
             h, rem = divmod(int(secs), 3600)
@@ -488,7 +487,7 @@ def create_app():
         report_win = tb.Toplevel(root)
         apply_window_icon(report_win)
         report_win.title("Daily Report")
-        report_win.geometry("300x280")
+        report_win.geometry("300x260")
         report_win.attributes("-topmost", True)
         report_win.resizable(False, False)
 
@@ -527,7 +526,6 @@ def create_app():
         stat_row("💼 Total Sessions", str(total_sessions), "primary")
         stat_row("⏱  Pomodoro Time", fmt_time(total_work_secs), "primary")
         stat_row("⏩ Stopwatch Time", fmt_time(total_sw_secs), "success")
-        stat_row("📈 Avg Work Session", fmt_time(avg_work_secs), "warning")
 
         if not today_sessions:
             tb.Label(

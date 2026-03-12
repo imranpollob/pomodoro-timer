@@ -89,7 +89,7 @@ def attach_fake_ui(monkeypatch):
     monkeypatch.setattr(pomodoro, "timer_label", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "start_btn", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "continue_btn", FakeWidget(), raising=False)
-    monkeypatch.setattr(pomodoro, "restart_btn", FakeWidget(), raising=False)
+    monkeypatch.setattr(pomodoro, "stop_btn", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "skip_btn", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "mode_frame", FakeFrame(), raising=False)
     return root
@@ -250,25 +250,50 @@ def test_update_timer_long_break_completion_resets_cycle(tmp_path, monkeypatch):
     assert modes == ["Work"]
 
 
-def test_restart_pomodoro_resets_stopwatch_mode(tmp_path, monkeypatch):
+def test_stop_pomodoro_logs_work_session(tmp_path, monkeypatch):
     reset_state(tmp_path, monkeypatch)
     attach_fake_ui(monkeypatch)
+    monkeypatch.setattr(pomodoro, "HISTORY_FILE", tmp_path / "history.json")
     monkeypatch.setattr(pomodoro, "timer_running", True)
-    pomodoro.settings["timer_mode"] = "Stopwatch"
-    modes = []
-    monkeypatch.setattr(pomodoro, "set_mode", lambda mode: modes.append(mode))
+    monkeypatch.setattr(pomodoro, "current_mode", "Work")
+    pomodoro.settings["work_time"] = 25
+    monkeypatch.setattr(pomodoro, "pomodoro_time", 15 * 60)  # 10 mins spent
 
-    pomodoro.restart_pomodoro()
+    pomodoro.stop_pomodoro()
 
     assert pomodoro.timer_running is False
-    assert modes == ["Stopwatch"]
-    assert pomodoro.continue_btn.pack_forget_calls == 1
-    assert pomodoro.restart_btn.pack_forget_calls == 1
-    assert pomodoro.start_btn.config_calls[-1] == {
-        "text": "Start",
-        "command": pomodoro.start_pomodoro,
-        "bootstyle": "primary",
-    }
+    history = pomodoro.load_history()
+    assert len(history) == 1
+    assert history[0]["type"] == "Work"
+    assert history[0]["duration_seconds"] == 10 * 60
+
+
+def test_stop_pomodoro_logs_stopwatch_session(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    attach_fake_ui(monkeypatch)
+    monkeypatch.setattr(pomodoro, "HISTORY_FILE", tmp_path / "history.json")
+    monkeypatch.setattr(pomodoro, "timer_running", True)
+    monkeypatch.setattr(pomodoro, "current_mode", "Stopwatch")
+    
+    # Mock datetime to control elapsed time
+    from datetime import datetime, timedelta
+    start_time = datetime.now()
+    monkeypatch.setattr(pomodoro, "stopwatch_start_time", start_time)
+    
+    # Force datetime.now() to be 30s later
+    class MockDateTime:
+        @classmethod
+        def now(cls):
+            return start_time + timedelta(seconds=30)
+    monkeypatch.setattr(pomodoro, "datetime", MockDateTime)
+
+    pomodoro.stop_pomodoro()
+
+    assert pomodoro.timer_running is False
+    history = pomodoro.load_history()
+    assert len(history) == 1
+    assert history[0]["type"] == "Stopwatch"
+    assert history[0]["duration_seconds"] == 30
 
 
 def test_skip_break_moves_to_work_mode(tmp_path, monkeypatch):
@@ -283,7 +308,27 @@ def test_skip_break_moves_to_work_mode(tmp_path, monkeypatch):
 
     assert pomodoro.timer_running is False
     assert pomodoro.continue_btn.pack_forget_calls == 1
-    assert pomodoro.restart_btn.pack_forget_calls == 1
+    assert pomodoro.stop_btn.pack_forget_calls == 1
     assert pomodoro.skip_btn.pack_forget_calls == 1
     assert modes == ["Work"]
+
+
+def test_log_session_ignores_short_sessions(tmp_path, monkeypatch):
+    monkeypatch.setattr(pomodoro, "HISTORY_FILE", tmp_path / "history.json")
+    
+    pomodoro.log_session("Work", 5)
+    
+    assert not (tmp_path / "history.json").exists()
+
+
+def test_log_session_appends_to_history(tmp_path, monkeypatch):
+    monkeypatch.setattr(pomodoro, "HISTORY_FILE", tmp_path / "history.json")
+    
+    pomodoro.log_session("Work", 15 * 60)
+    pomodoro.log_session("Stopwatch", 30)
+    
+    history = pomodoro.load_history()
+    assert len(history) == 2
+    assert history[0]["type"] == "Work"
+    assert history[1]["type"] == "Stopwatch"
 

@@ -34,7 +34,7 @@ Build and install a native `.deb` package for full desktop integration:
 
 ```bash
 bash build_deb.sh
-sudo dpkg -i pomodoro-timer_0.1.1_amd64.deb
+sudo dpkg -i pomodoro-timer_amd64.deb
 ```
 
 ### Windows — Build standalone executable

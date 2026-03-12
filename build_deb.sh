@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-VERSION="0.1.1"
-PKG_NAME="pomodoro-timer_${VERSION}_amd64"
+PKG_NAME="pomodoro-timer_amd64"
 
 echo "==> Building binary with PyInstaller..."
 uv run pyinstaller --clean pomodoro.spec
