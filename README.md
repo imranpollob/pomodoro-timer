@@ -4,10 +4,11 @@ A simple pomodoro timer featuring useful functionalities.
 ## Features
 - Customizable Pomodoro cycles: Work (25m), Short Break (5m), Long Break (15m)
 - Endless Timer/Stopwatch mode for custom focus sessions
-- Daily Report with today's focus statistics
+- Daily Report with today's focus statistics and a statistics reset option in settings
 - Audio notifications on session completion
 - Adjustable font size for a customizable desktop clock feel
 - Always on top, with transparency when unfocused
+- Timer mamimize and minimize option for minimal distraction
 
 ## Screenshots
 

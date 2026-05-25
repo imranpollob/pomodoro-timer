@@ -497,3 +497,40 @@ def test_update_timer_auto_minimizes_when_done(tmp_path, monkeypatch):
     assert minimizes == [True]
 
 
+def test_reset_today_stats_removes_only_todays_entries(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    history_file = tmp_path / "history.json"
+    monkeypatch.setattr(pomodoro, "HISTORY_FILE", history_file)
+    
+    # 1. Create a dummy history with different dates
+    from datetime import date, timedelta
+    today = date.today().isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    two_days_ago = (date.today() - timedelta(days=2)).isoformat()
+    
+    dummy_history = [
+        {"date": today, "type": "Work", "duration_seconds": 1500},
+        {"date": yesterday, "type": "Work", "duration_seconds": 1500},
+        {"date": today, "type": "Stopwatch", "duration_seconds": 600},
+        {"date": two_days_ago, "type": "Work", "duration_seconds": 1500},
+    ]
+    
+    with open(history_file, "w") as f:
+        json.dump(dummy_history, f)
+        
+    # 2. Trigger the reset today stats function
+    success = pomodoro.reset_today_stats()
+    
+    assert success is True
+    
+    # 3. Reload history and check stats are filtered correctly
+    history = pomodoro.load_history()
+    assert len(history) == 2
+    # Verify only past dates remain
+    dates_remaining = [s["date"] for s in history]
+    assert today not in dates_remaining
+    assert yesterday in dates_remaining
+    assert two_days_ago in dates_remaining
+
+
+

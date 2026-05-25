@@ -90,6 +90,19 @@ def log_session(session_type, duration_seconds):
         print(f"Error saving history: {e}")
 
 
+def reset_today_stats():
+    today = date.today().isoformat()
+    history = load_history()
+    new_history = [s for s in history if s.get("date") != today]
+    try:
+        with open(HISTORY_FILE, "w") as f:
+            json.dump(new_history, f, indent=4)
+        return True
+    except Exception as e:
+        print(f"Error resetting history: {e}")
+        return False
+
+
 def get_resource_path(filename):
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         base_path = sys._MEIPASS
@@ -119,7 +132,7 @@ def open_settings_dialog():
     settings_win = tb.Toplevel(root)
     apply_window_icon(settings_win)
     settings_win.title("Settings")
-    settings_win.geometry("320x400")
+    settings_win.geometry("320x460")
     settings_win.attributes("-topmost", True)
 
     def create_slider(parent, label_text, var, from_, to, is_float=False):
@@ -202,6 +215,27 @@ def open_settings_dialog():
             settings_win.destroy()
         except ValueError:
             pass  # Ignore invalid inputs
+
+    def reset_stats():
+        from tkinter import messagebox
+        confirm = messagebox.askyesno(
+            "Confirm Reset",
+            "Are you sure you want to reset today's statistics? This cannot be undone.",
+            parent=settings_win
+        )
+        if confirm:
+            if reset_today_stats():
+                messagebox.showinfo("Reset Complete", "Today's statistics have been reset.", parent=settings_win)
+            else:
+                messagebox.showerror("Error", "Could not reset today's statistics.", parent=settings_win)
+
+    tb.Button(
+        settings_win,
+        text="🗑  Reset Today's Stats",
+        command=reset_stats,
+        bootstyle="danger-outline",
+        width=20
+    ).pack(pady=5)
 
     tb.Button(
         settings_win, text="Save Settings", command=save, bootstyle="success", width=20
