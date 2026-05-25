@@ -36,6 +36,9 @@ class FakeWidget:
     def pack_forget(self):
         self.pack_forget_calls += 1
 
+    def bind(self, event, callback):
+        pass
+
 
 class FakeChild:
     def __init__(self):
@@ -45,8 +48,9 @@ class FakeChild:
         self.states.append(kwargs)
 
 
-class FakeFrame:
+class FakeFrame(FakeWidget):
     def __init__(self, child_count=2):
+        super().__init__()
         self.children = [FakeChild() for _ in range(child_count)]
 
     def winfo_children(self):
@@ -59,6 +63,8 @@ class FakeRoot:
         self.bell_calls = 0
         self.attribute_calls = []
         self.wm_attribute_calls = []
+        self.config_calls = []
+        self.geometry_calls = []
 
     def after(self, delay, callback):
         self.after_calls.append((delay, callback))
@@ -72,6 +78,14 @@ class FakeRoot:
     def wm_attributes(self, *args):
         self.wm_attribute_calls.append(args)
 
+    def config(self, **kwargs):
+        self.config_calls.append(kwargs)
+
+    configure = config
+
+    def geometry(self, geom_str):
+        self.geometry_calls.append(geom_str)
+
 
 def reset_state(tmp_path, monkeypatch):
     monkeypatch.setattr(pomodoro, "SETTINGS_FILE", str(tmp_path / "settings.json"))
@@ -80,6 +94,7 @@ def reset_state(tmp_path, monkeypatch):
     monkeypatch.setattr(pomodoro, "completed_pomodoros", 0)
     monkeypatch.setattr(pomodoro, "timer_running", False)
     monkeypatch.setattr(pomodoro, "pomodoro_time", 0)
+    monkeypatch.setattr(pomodoro, "is_maximized", False)
 
 
 def attach_fake_ui(monkeypatch):
@@ -87,10 +102,14 @@ def attach_fake_ui(monkeypatch):
     monkeypatch.setattr(pomodoro, "root", root, raising=False)
     monkeypatch.setattr(pomodoro, "mode_label", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "timer_label", FakeWidget(), raising=False)
+    monkeypatch.setattr(pomodoro, "timer_frame", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "start_btn", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "continue_btn", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "stop_btn", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "skip_btn", FakeWidget(), raising=False)
+    monkeypatch.setattr(pomodoro, "maximize_btn", FakeWidget(), raising=False)
+    monkeypatch.setattr(pomodoro, "minimize_btn", FakeWidget(), raising=False)
+    monkeypatch.setattr(pomodoro, "menu_bar", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "mode_frame", FakeFrame(), raising=False)
     return root
 
@@ -331,4 +350,101 @@ def test_log_session_appends_to_history(tmp_path, monkeypatch):
     assert len(history) == 2
     assert history[0]["type"] == "Work"
     assert history[1]["type"] == "Stopwatch"
+
+
+def test_maximize_timer_hides_controls(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    root = attach_fake_ui(monkeypatch)
+    
+    pomodoro.maximize_timer()
+    
+    assert pomodoro.is_maximized is True
+    # Hides mode_frame, mode_label, start_btn, maximize_btn
+    assert pomodoro.mode_frame.pack_forget_calls == 1
+    assert pomodoro.mode_label.pack_forget_calls == 1
+    assert pomodoro.start_btn.pack_forget_calls == 1
+    assert pomodoro.maximize_btn.pack_forget_calls == 1
+    
+    # Check menu bar hidden
+    assert root.config_calls[-1] == {"menu": ""}
+    # Check geometry changed to compact
+    assert root.geometry_calls[-1] == "290x150"
+    
+    # Check timer_frame repacked with top padding
+    assert pomodoro.timer_frame.pack_forget_calls == 1
+    assert pomodoro.timer_frame.pack_calls[-1] == {"pady": (35, 10)}
+    
+    # Check minimize button shown next to the timer
+    assert pomodoro.minimize_btn.pack_calls[-1] == {"side": "left", "padx": (5, 0), "anchor": "center"}
+
+
+def test_minimize_timer_restores_controls_when_running(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    root = attach_fake_ui(monkeypatch)
+    monkeypatch.setattr(pomodoro, "timer_running", True)
+    
+    pomodoro.minimize_timer()
+    
+    assert pomodoro.is_maximized is False
+    assert pomodoro.minimize_btn.pack_forget_calls == 1
+    # Restored menu bar
+    assert root.config_calls[-1] == {"menu": pomodoro.menu_bar}
+    # Restored default window geometry
+    assert root.geometry_calls[-1] == "290x290"
+    
+    # Restored standard timer_frame packing
+    assert pomodoro.timer_frame.pack_forget_calls == 1
+    assert pomodoro.timer_frame.pack_calls[-1] == {"pady": 0}
+    
+    # Repacked main layouts
+    assert len(pomodoro.mode_frame.pack_calls) == 1
+    assert len(pomodoro.mode_label.pack_calls) == 1
+    # Repacked start_btn (Pause) and maximize_btn next to the timer
+    assert len(pomodoro.start_btn.pack_calls) == 1
+    assert pomodoro.maximize_btn.pack_calls[-1] == {"side": "left", "padx": (5, 0), "anchor": "center"}
+
+
+def test_minimize_timer_restores_controls_when_completed(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    root = attach_fake_ui(monkeypatch)
+    monkeypatch.setattr(pomodoro, "timer_running", False)
+    
+    pomodoro.minimize_timer()
+    
+    assert pomodoro.is_maximized is False
+    assert pomodoro.minimize_btn.pack_forget_calls == 1
+    # Restored menu bar and geometry
+    assert root.config_calls[-1] == {"menu": pomodoro.menu_bar}
+    assert root.geometry_calls[-1] == "290x290"
+    
+    # Restored standard timer_frame packing
+    assert pomodoro.timer_frame.pack_forget_calls == 1
+    assert pomodoro.timer_frame.pack_calls[-1] == {"pady": 0}
+    
+    # Repacked main layouts
+    assert len(pomodoro.mode_frame.pack_calls) == 1
+    assert len(pomodoro.mode_label.pack_calls) == 1
+    # Repacked start_btn (Start), did not pack maximize_btn
+    assert len(pomodoro.start_btn.pack_calls) == 1
+    assert len(pomodoro.maximize_btn.pack_calls) == 0
+
+
+def test_update_timer_auto_minimizes_when_done(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    root = attach_fake_ui(monkeypatch)
+    monkeypatch.setattr(pomodoro, "timer_running", True)
+    monkeypatch.setattr(pomodoro, "current_mode", "Work")
+    monkeypatch.setattr(pomodoro, "pomodoro_time", 0)
+    monkeypatch.setattr(pomodoro, "is_maximized", True)
+    monkeypatch.setattr(pomodoro.sys, "platform", "win32")
+    
+    minimizes = []
+    monkeypatch.setattr(pomodoro, "minimize_timer", lambda: minimizes.append(True))
+    monkeypatch.setattr(pomodoro, "set_mode", lambda mode: None)
+    
+    pomodoro.update_timer()
+    
+    assert pomodoro.timer_running is False
+    assert minimizes == [True]
+
 

@@ -35,6 +35,7 @@ completed_pomodoros = 0
 timer_running = False
 pomodoro_time = 0
 stopwatch_start_time = None
+is_maximized = False
 
 
 def load_settings():
@@ -254,6 +255,11 @@ def start_pomodoro():
         for child in mode_frame.winfo_children():
             child.configure(state="disabled")
 
+        try:
+            maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
+        except NameError:
+            pass
+
         update_timer()
     else:
         pause_pomodoro()
@@ -263,6 +269,10 @@ def pause_pomodoro():
     global timer_running
     timer_running = False
     start_btn.pack_forget()
+    try:
+        maximize_btn.pack_forget()
+    except NameError:
+        pass
     continue_btn.pack(pady=5)
     stop_btn.pack(pady=5)
     if current_mode in ["Short Break", "Long Break"]:
@@ -283,6 +293,10 @@ def continue_pomodoro():
     stop_btn.pack_forget()
     start_btn.config(text="Pause", command=pause_pomodoro, bootstyle="warning")
     start_btn.pack(pady=5)
+    try:
+        maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
+    except NameError:
+        pass
     if current_mode in ["Short Break", "Long Break"]:
         try:
             skip_btn.pack_forget()
@@ -310,6 +324,7 @@ def stop_pomodoro():
         continue_btn.pack_forget()
         stop_btn.pack_forget()
         skip_btn.pack_forget()
+        maximize_btn.pack_forget()
     except NameError:
         pass
 
@@ -334,6 +349,7 @@ def skip_break():
         continue_btn.pack_forget()
         stop_btn.pack_forget()
         skip_btn.pack_forget()
+        maximize_btn.pack_forget()
     except NameError:
         pass
 
@@ -365,6 +381,11 @@ def update_timer():
                 pomodoro_time -= 1
                 root.after(1000, update_timer)
             else:
+                timer_running = False
+
+                if is_maximized:
+                    minimize_timer()
+
                 if settings["sound_enabled"]:
                     if sys.platform == "linux":
                         sound_file = get_resource_path("complete.oga")
@@ -372,7 +393,6 @@ def update_timer():
                     else:
                         root.bell()
 
-                timer_running = False
                 start_btn.config(
                     text="Start", command=start_pomodoro, bootstyle="primary"
                 )
@@ -397,8 +417,73 @@ def update_timer():
                     set_mode("Work")
 
 
+def maximize_timer():
+    global is_maximized
+    is_maximized = True
+
+    # Hide regular layout controls
+    mode_frame.pack_forget()
+    mode_label.pack_forget()
+    start_btn.pack_forget()
+    continue_btn.pack_forget()
+    stop_btn.pack_forget()
+    try:
+        skip_btn.pack_forget()
+    except NameError:
+        pass
+    try:
+        maximize_btn.pack_forget()
+    except NameError:
+        pass
+
+    # Hide menu bar
+    root.config(menu="")
+
+    # Resize window to a compact centered widget layout
+    root.geometry("240x80")
+
+    # Repack timer_frame with top padding to center beautifully
+    timer_frame.pack_forget()
+    timer_frame.pack(pady=(15, 5))
+
+    # Show minimize button next to the timer
+    minimize_btn.pack(side="left", padx=(5, 0), anchor="center")
+
+
+def minimize_timer():
+    global is_maximized
+    is_maximized = False
+
+    # Hide minimize button next to the timer
+    minimize_btn.pack_forget()
+
+    # Restore menu bar
+    root.config(menu=menu_bar)
+
+    # Restore default window geometry
+    root.geometry("290x290")
+
+    # Restore standard timer_frame packing
+    timer_frame.pack_forget()
+    timer_frame.pack(pady=0)
+
+    # Pack core widgets back
+    mode_frame.pack(pady=(12, 0))
+    mode_label.pack(pady=(8, 0))
+
+    # Restore controls based on whether the timer is running
+    if timer_running:
+        start_btn.pack(pady=4)
+        try:
+            maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
+        except NameError:
+            pass
+    else:
+        start_btn.pack(pady=4)
+
+
 def create_app():
-    global root, mode_label, timer_label, start_btn, continue_btn, stop_btn, skip_btn, mode_frame, mode_var
+    global root, mode_label, timer_label, start_btn, continue_btn, stop_btn, skip_btn, mode_frame, mode_var, maximize_btn, minimize_btn, menu_bar, timer_frame
     root = tb.Window(themename="superhero")
     apply_window_icon(root)
     root.title("Pomodoro")
@@ -431,10 +516,13 @@ def create_app():
     mode_label = tb.Label(root, text="", font=(FONT_FAMILY, 12, "bold"))
     mode_label.pack(pady=(8, 0))
 
+    timer_frame = tb.Frame(root)
+    timer_frame.pack(pady=0)
+
     timer_label = tb.Label(
-        root, text="", font=(FONT_FAMILY, settings["label_font_size"], "bold")
+        timer_frame, text="", font=(FONT_FAMILY, settings["label_font_size"], "bold")
     )
-    timer_label.pack(pady=0)
+    timer_label.pack(side="left")
 
     start_btn = tb.Button(
         root, text="Start", command=start_pomodoro, bootstyle="primary", width=12
@@ -450,6 +538,15 @@ def create_app():
     skip_btn = tb.Button(
         root, text="Skip Break", command=skip_break, bootstyle="secondary", width=12
     )
+
+    maximize_btn = tb.Label(
+        timer_frame, text="⛶", cursor="hand2", font=(FONT_FAMILY, 18), bootstyle="info"
+    )
+    maximize_btn.bind("<Button-1>", lambda e: maximize_timer())
+    minimize_btn = tb.Label(
+        timer_frame, text="⤡", cursor="hand2", font=(FONT_FAMILY, 18), bootstyle="info"
+    )
+    minimize_btn.bind("<Button-1>", lambda e: minimize_timer())
 
     def increase_font():
         settings["label_font_size"] = min(settings["label_font_size"] + 2, 72)
