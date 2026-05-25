@@ -95,6 +95,8 @@ def reset_state(tmp_path, monkeypatch):
     monkeypatch.setattr(pomodoro, "timer_running", False)
     monkeypatch.setattr(pomodoro, "pomodoro_time", 0)
     monkeypatch.setattr(pomodoro, "is_maximized", False)
+    monkeypatch.setattr(pomodoro, "stopwatch_start_time", None)
+    monkeypatch.setattr(pomodoro, "stopwatch_accumulated_seconds", 0)
 
 
 def attach_fake_ui(monkeypatch):
@@ -315,6 +317,53 @@ def test_stop_pomodoro_logs_stopwatch_session(tmp_path, monkeypatch):
     assert history[0]["duration_seconds"] == 30
 
 
+def test_stop_pomodoro_logs_stopwatch_session_with_pauses(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    attach_fake_ui(monkeypatch)
+    monkeypatch.setattr(pomodoro, "HISTORY_FILE", tmp_path / "history.json")
+    monkeypatch.setattr(pomodoro, "timer_running", True)
+    monkeypatch.setattr(pomodoro, "current_mode", "Stopwatch")
+    
+    from datetime import datetime, timedelta
+    start_time = datetime.now()
+    monkeypatch.setattr(pomodoro, "stopwatch_start_time", start_time)
+    
+    # 1. Simulate running for 20 seconds, then pausing
+    current_time = start_time + timedelta(seconds=20)
+    
+    class MockDateTime1:
+        @classmethod
+        def now(cls):
+            return current_time
+            
+    monkeypatch.setattr(pomodoro, "datetime", MockDateTime1)
+    pomodoro.pause_pomodoro()
+    
+    assert pomodoro.stopwatch_accumulated_seconds == 20
+    assert pomodoro.stopwatch_start_time is None
+    
+    # 2. Simulate resuming (continuing) after 10 seconds of pause
+    pomodoro.continue_pomodoro()
+    assert pomodoro.stopwatch_start_time == current_time
+    
+    # 3. Simulate running for another 15 seconds, then stopping
+    current_time = current_time + timedelta(seconds=15)
+    
+    class MockDateTime2:
+        @classmethod
+        def now(cls):
+            return current_time
+            
+    monkeypatch.setattr(pomodoro, "datetime", MockDateTime2)
+    pomodoro.stop_pomodoro()
+    
+    assert pomodoro.timer_running is False
+    history = pomodoro.load_history()
+    assert len(history) == 1
+    assert history[0]["type"] == "Stopwatch"
+    assert history[0]["duration_seconds"] == 35  # 20s active + 15s active
+
+
 def test_skip_break_moves_to_work_mode(tmp_path, monkeypatch):
     reset_state(tmp_path, monkeypatch)
     attach_fake_ui(monkeypatch)
@@ -368,11 +417,11 @@ def test_maximize_timer_hides_controls(tmp_path, monkeypatch):
     # Check menu bar hidden
     assert root.config_calls[-1] == {"menu": ""}
     # Check geometry changed to compact
-    assert root.geometry_calls[-1] == "290x150"
+    assert root.geometry_calls[-1] == "240x80"
     
     # Check timer_frame repacked with top padding
     assert pomodoro.timer_frame.pack_forget_calls == 1
-    assert pomodoro.timer_frame.pack_calls[-1] == {"pady": (35, 10)}
+    assert pomodoro.timer_frame.pack_calls[-1] == {"pady": (15, 5)}
     
     # Check minimize button shown next to the timer
     assert pomodoro.minimize_btn.pack_calls[-1] == {"side": "left", "padx": (5, 0), "anchor": "center"}

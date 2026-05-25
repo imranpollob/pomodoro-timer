@@ -35,6 +35,7 @@ completed_pomodoros = 0
 timer_running = False
 pomodoro_time = 0
 stopwatch_start_time = None
+stopwatch_accumulated_seconds = 0
 is_maximized = False
 
 
@@ -242,13 +243,14 @@ def set_mode(mode):
 
 
 def start_pomodoro():
-    global timer_running, stopwatch_start_time
+    global timer_running, stopwatch_start_time, stopwatch_accumulated_seconds
     if not timer_running:
         timer_running = True
         start_btn.config(text="Pause", command=pause_pomodoro, bootstyle="warning")
 
         # Track start time for stopwatch
         if current_mode == "Stopwatch":
+            stopwatch_accumulated_seconds = 0
             stopwatch_start_time = datetime.now()
 
         # Disable mode toggle buttons while timer is running
@@ -266,8 +268,11 @@ def start_pomodoro():
 
 
 def pause_pomodoro():
-    global timer_running
+    global timer_running, stopwatch_start_time, stopwatch_accumulated_seconds
     timer_running = False
+    if current_mode == "Stopwatch" and stopwatch_start_time is not None:
+        stopwatch_accumulated_seconds += (datetime.now() - stopwatch_start_time).total_seconds()
+        stopwatch_start_time = None
     start_btn.pack_forget()
     try:
         maximize_btn.pack_forget()
@@ -307,14 +312,16 @@ def continue_pomodoro():
 
 
 def stop_pomodoro():
-    global timer_running, stopwatch_start_time, pomodoro_time
+    global timer_running, stopwatch_start_time, pomodoro_time, stopwatch_accumulated_seconds
     timer_running = False
 
     # Log time spent depending on mode
-    if current_mode == "Stopwatch" and stopwatch_start_time is not None:
-        elapsed = (datetime.now() - stopwatch_start_time).total_seconds()
-        log_session("Stopwatch", elapsed)
-        stopwatch_start_time = None
+    if current_mode == "Stopwatch":
+        if stopwatch_start_time is not None:
+            stopwatch_accumulated_seconds += (datetime.now() - stopwatch_start_time).total_seconds()
+            stopwatch_start_time = None
+        log_session("Stopwatch", stopwatch_accumulated_seconds)
+        stopwatch_accumulated_seconds = 0
     elif current_mode == "Work":
         # Calculate how much work time was actually spent
         spent = settings["work_time"] * 60 - pomodoro_time
