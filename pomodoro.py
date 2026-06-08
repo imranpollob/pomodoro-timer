@@ -332,11 +332,6 @@ def render_todos():
                 font=(FONT_FAMILY, 10),
                 bootstyle="info",
             )
-            edit_entry.pack(side="left", fill="x", expand=True, padx=2)
-            edit_entry.focus_set()
-            edit_entry.select_range(0, tk.END)
-            edit_entry.icursor(tk.END)
-            
             def save_edit(event=None, t=todo, var=edit_var):
                 new_text = var.get().strip()
                 if new_text:
@@ -355,6 +350,10 @@ def render_todos():
                 command=save_edit
             )
             save_btn.pack(side="right", padx=2)
+            edit_entry.pack(side="left", fill="x", expand=True, padx=2)
+            edit_entry.focus_set()
+            edit_entry.select_range(0, tk.END)
+            edit_entry.icursor(tk.END)
         else:
             var = tk.BooleanVar(value=todo["done"])
             cb = tb.Checkbutton(
@@ -363,7 +362,6 @@ def render_todos():
                 bootstyle="success",
                 command=lambda t=todo, v=var: toggle_todo_status(t, v.get())
             )
-            cb.pack(side="left", padx=2)
             
             fg_color = "gray" if todo["done"] else "white"
             font_style = (FONT_FAMILY, 10, "overstrike") if todo["done"] else (FONT_FAMILY, 10)
@@ -377,26 +375,44 @@ def render_todos():
                 justify="left",
                 wraplength=140
             )
-            lbl.pack(side="left", fill="x", expand=True, padx=2)
             lbl.bind("<Double-1>", lambda e, tid=todo_id: start_edit(tid))
+            
+            def make_configure_handler(frame=item_frame, l=lbl):
+                def handler(event):
+                    if event.widget != frame:
+                        return
+                    lbl_width = max(50, event.width - 135)
+                    try:
+                        current_wrap = int(l.cget("wraplength"))
+                    except ValueError:
+                        current_wrap = 0
+                    if current_wrap != lbl_width:
+                        l.configure(wraplength=lbl_width)
+                return handler
+                
+            item_frame.bind("<Configure>", make_configure_handler(item_frame, lbl))
             
             edit_btn = tb.Button(
                 item_frame,
-                text="✏",
-                bootstyle="secondary-link",
-                width=2,
+                text="🖋️",
+                bootstyle="info-link",
+                width=3,
                 command=lambda tid=todo_id: start_edit(tid)
             )
-            edit_btn.pack(side="right", padx=2)
             
             del_btn = tb.Button(
                 item_frame,
                 text="❌",
                 bootstyle="danger-link",
-                width=2,
+                width=3,
                 command=lambda t=todo: delete_todo_item(t)
             )
-            del_btn.pack(side="right", padx=2)
+            
+            # Pack order: pack side="right" buttons first, then side="left" widgets
+            del_btn.pack(side="right", padx=0)
+            edit_btn.pack(side="right", padx=0)
+            cb.pack(side="left", padx=1)
+            lbl.pack(side="left", fill="x", expand=True, padx=1)
             
     todo_list_frame.update_idletasks()
     todo_list_canvas.configure(scrollregion=todo_list_canvas.bbox("all"))
@@ -938,6 +954,10 @@ def create_app():
     apply_window_icon(root)
     root.title("Pomodoro")
     
+    style = tb.Style()
+    style.configure('Info.Link.TButton', anchor='e')
+    style.configure('Danger.Link.TButton', anchor='w')
+    
     # Force todo list to be invisible at startup
     settings["todo_sidebar_visible"] = False
     
@@ -1032,7 +1052,7 @@ def create_app():
     todo_container.bind("<Configure>", on_pane_configure)
     main_container.bind("<Configure>", on_pane_configure)
     
-    todo_title = tb.Label(todo_container, text="📝 Todos", font=(FONT_FAMILY, 12, "bold"), bootstyle="info")
+    todo_title = tb.Label(todo_container, text="Todos", font=(FONT_FAMILY, 12, "bold"), bootstyle="primary")
     todo_title.pack(anchor="w", pady=(5, 5), padx=5)
     
     input_frame = tb.Frame(todo_container)
