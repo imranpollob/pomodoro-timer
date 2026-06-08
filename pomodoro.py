@@ -43,6 +43,21 @@ stopwatch_start_time = None
 stopwatch_accumulated_seconds = 0
 is_maximized = False
 
+# Global UI references initialized later in create_app()
+root = None
+mode_label = None
+timer_label = None
+start_btn = None
+continue_btn = None
+stop_btn = None
+skip_btn = None
+mode_frame = None
+mode_var = None
+maximize_btn = None
+minimize_btn = None
+menu_bar = None
+timer_frame = None
+
 
 def load_settings():
     global settings
