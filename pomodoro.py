@@ -16,6 +16,7 @@ else:
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
 HISTORY_FILE = CONFIG_DIR / "history.json"
+TODOS_FILE = CONFIG_DIR / "todos.json"
 
 FONT_FAMILY = "Helvetica"
 
@@ -33,6 +34,8 @@ settings = {
     "maximized_window_width": 240,
     "maximized_window_height": 80,
     "is_maximized_state": False,
+    "todo_sidebar_visible": False,
+    "todo_sidebar_width": 250,
 }
 
 current_mode = "Work"
@@ -57,6 +60,90 @@ maximize_btn = None
 minimize_btn = None
 menu_bar = None
 timer_frame = None
+main_container = None
+todo_container = None
+todo_entry = None
+todo_list_frame = None
+todo_list_canvas = None
+sash_toggle_btn = None
+editing_todo_ids = set()
+todos = []
+paned = None
+is_updating_layout = True
+
+
+class SashToggleButton(tk.Canvas):
+    def __init__(self, master, command=None, **kwargs):
+        style = tb.Style()
+        self.bg_normal = style.colors.secondary
+        self.bg_hover = style.colors.info
+        self.fg_color = "white"
+        
+        super().__init__(
+            master,
+            width=18,
+            bg=self.bg_normal,
+            bd=0,
+            highlightthickness=0,
+            cursor="hand2",
+            **kwargs
+        )
+        self.command = command
+        self.text_val = "SHOW TODOS"
+        
+        self.bind("<Enter>", self.on_enter)
+        self.bind("<Leave>", self.on_leave)
+        self.bind("<Button-1>", self.on_click)
+        self.bind("<Configure>", lambda e: self.draw())
+
+    def on_enter(self, event):
+        self.configure(bg=self.bg_hover)
+
+    def on_leave(self, event):
+        self.configure(bg=self.bg_normal)
+
+    def on_click(self, event):
+        if self.command:
+            self.command()
+
+    def set_text(self, text):
+        if "\n" in text:
+            text = text.replace("\n", "")
+        self.text_val = text.upper()
+        self.draw()
+
+    def configure(self, cnf=None, **kwargs):
+        if cnf is not None:
+            if isinstance(cnf, dict) and "text" in cnf:
+                self.set_text(cnf.pop("text"))
+        if "text" in kwargs:
+            self.set_text(kwargs.pop("text"))
+        
+        if "bootstyle" in kwargs:
+            bootstyle = kwargs.pop("bootstyle")
+            style = tb.Style()
+            if "info" in bootstyle:
+                self.configure(bg=style.colors.info)
+            elif "secondary" in bootstyle:
+                self.configure(bg=style.colors.secondary)
+                
+        return super().configure(cnf, **kwargs)
+
+    config = configure
+
+    def draw(self):
+        self.delete("all")
+        h = self.winfo_height()
+        w = self.winfo_width()
+        if h > 20:
+            self.create_text(
+                w / 2,
+                h / 2,
+                text=self.text_val,
+                angle=270,
+                fill=self.fg_color,
+                font=(FONT_FAMILY, 9, "bold")
+            )
 
 
 def load_settings():
@@ -79,6 +166,243 @@ def save_settings():
 
 
 load_settings()
+
+
+def load_todos():
+    global todos
+    if TODOS_FILE.exists():
+        try:
+            with open(TODOS_FILE, "r") as f:
+                todos = json.load(f)
+        except Exception as e:
+            print(f"Error loading todos: {e}")
+            todos = []
+    else:
+        todos = []
+
+
+def save_todos():
+    try:
+        with open(TODOS_FILE, "w") as f:
+            json.dump(todos, f, indent=4)
+    except Exception as e:
+        print(f"Error saving todos: {e}")
+
+
+def add_todo_item():
+    text = todo_entry.get().strip()
+    if text:
+        todo_id = int(datetime.now().timestamp() * 1000)
+        todos.append({
+            "id": todo_id,
+            "text": text,
+            "done": False
+        })
+        save_todos()
+        todo_entry.delete(0, tk.END)
+        render_todos()
+
+
+def toggle_todo_status(todo, is_done):
+    todo["done"] = is_done
+    save_todos()
+    render_todos()
+
+
+def start_edit(todo_id):
+    editing_todo_ids.add(todo_id)
+    render_todos()
+
+
+def delete_todo_item(todo):
+    if todo in todos:
+        todos.remove(todo)
+        save_todos()
+        render_todos()
+
+
+def reset_updating_layout():
+    global is_updating_layout
+    is_updating_layout = False
+
+
+def on_pane_configure(event):
+    if is_updating_layout:
+        return
+    if settings.get("todo_sidebar_visible", False) and not is_maximized:
+        try:
+            if todo_container is not None and str(event.widget) == str(todo_container):
+                w_todo = todo_container.winfo_width()
+                if w_todo > 10:
+                    settings["todo_sidebar_width"] = w_todo
+            if main_container is not None and str(event.widget) == str(main_container):
+                w_main = main_container.winfo_width()
+                if w_main > 10:
+                    settings["window_width"] = w_main
+        except Exception:
+            pass
+
+
+def toggle_todo_sidebar():
+    visible = not settings.get("todo_sidebar_visible", False)
+    settings["todo_sidebar_visible"] = visible
+    save_settings()
+    update_todo_layout()
+
+
+def update_todo_layout():
+    global is_updating_layout
+    is_updating_layout = True
+    try:
+        if is_maximized:
+            if todo_container is not None and paned is not None:
+                try:
+                    paned.forget(todo_container)
+                except Exception:
+                    pass
+            return
+
+        visible = settings.get("todo_sidebar_visible", False)
+        geom = root.geometry()
+        size_pos = geom.split("+")
+        size = size_pos[0]
+        w, h = map(int, size.split("x"))
+        
+        sidebar_w = settings.get("todo_sidebar_width", 250)
+        
+        if visible:
+            if paned is not None and str(todo_container) not in paned.panes():
+                paned.add(todo_container, weight=1)
+            sash_toggle_btn.config(text="Hide Todos".upper())
+            if w < 400:
+                new_w = w + sidebar_w
+                if len(size_pos) > 1:
+                    x, y = size_pos[1], size_pos[2]
+                    root.geometry(f"{new_w}x{h}+{x}+{y}")
+                else:
+                    root.geometry(f"{new_w}x{h}")
+                
+                root.update_idletasks()
+                try:
+                    paned.sashpos(0, w)
+                except Exception:
+                    pass
+            else:
+                root.update_idletasks()
+                try:
+                    paned.sashpos(0, settings.get("window_width", 290))
+                except Exception:
+                    pass
+        else:
+            if paned is not None:
+                try:
+                    paned.forget(todo_container)
+                except Exception:
+                    pass
+            sash_toggle_btn.config(text="Show Todos".upper())
+            if w >= 400:
+                new_w = w - sidebar_w
+                if len(size_pos) > 1:
+                    x, y = size_pos[1], size_pos[2]
+                    root.geometry(f"{new_w}x{h}+{x}+{y}")
+                else:
+                    root.geometry(f"{new_w}x{h}")
+    finally:
+        root.after(100, reset_updating_layout)
+
+
+def render_todos():
+    global todo_list_frame, todo_list_canvas
+    if todo_list_frame is None:
+        return
+        
+    for widget in todo_list_frame.winfo_children():
+        widget.destroy()
+        
+    for todo in todos:
+        item_frame = tb.Frame(todo_list_frame)
+        item_frame.pack(fill="x", pady=4, padx=5)
+        
+        todo_id = todo["id"]
+        if todo_id in editing_todo_ids:
+            edit_var = tk.StringVar(value=todo["text"])
+            edit_entry = tb.Entry(
+                item_frame,
+                textvariable=edit_var,
+                font=(FONT_FAMILY, 10),
+                bootstyle="info",
+            )
+            edit_entry.pack(side="left", fill="x", expand=True, padx=2)
+            edit_entry.focus_set()
+            edit_entry.select_range(0, tk.END)
+            edit_entry.icursor(tk.END)
+            
+            def save_edit(event=None, t=todo, var=edit_var):
+                new_text = var.get().strip()
+                if new_text:
+                    t["text"] = new_text
+                    save_todos()
+                editing_todo_ids.discard(t["id"])
+                render_todos()
+                
+            edit_entry.bind("<Return>", save_edit)
+            
+            save_btn = tb.Button(
+                item_frame,
+                text="✔",
+                bootstyle="success-link",
+                width=2,
+                command=save_edit
+            )
+            save_btn.pack(side="right", padx=2)
+        else:
+            var = tk.BooleanVar(value=todo["done"])
+            cb = tb.Checkbutton(
+                item_frame,
+                variable=var,
+                bootstyle="success",
+                command=lambda t=todo, v=var: toggle_todo_status(t, v.get())
+            )
+            cb.pack(side="left", padx=2)
+            
+            fg_color = "gray" if todo["done"] else "white"
+            font_style = (FONT_FAMILY, 10, "overstrike") if todo["done"] else (FONT_FAMILY, 10)
+            
+            lbl = tb.Label(
+                item_frame,
+                text=todo["text"],
+                font=font_style,
+                foreground=fg_color,
+                anchor="w",
+                justify="left",
+                wraplength=140
+            )
+            lbl.pack(side="left", fill="x", expand=True, padx=2)
+            lbl.bind("<Double-1>", lambda e, tid=todo_id: start_edit(tid))
+            
+            edit_btn = tb.Button(
+                item_frame,
+                text="✏",
+                bootstyle="secondary-link",
+                width=2,
+                command=lambda tid=todo_id: start_edit(tid)
+            )
+            edit_btn.pack(side="right", padx=2)
+            
+            del_btn = tb.Button(
+                item_frame,
+                text="❌",
+                bootstyle="danger-link",
+                width=2,
+                command=lambda t=todo: delete_todo_item(t)
+            )
+            del_btn.pack(side="right", padx=2)
+            
+    todo_list_frame.update_idletasks()
+    todo_list_canvas.configure(scrollregion=todo_list_canvas.bbox("all"))
+
+
+load_todos()
 
 
 def load_history():
@@ -141,11 +465,13 @@ def apply_window_icon(window):
 
 
 def on_focus_in(event):
-    root.wm_attributes("-alpha", 1.0)
+    if event.widget == root:
+        root.wm_attributes("-alpha", 1.0)
 
 
 def on_focus_out(event):
-    root.wm_attributes("-alpha", settings["unfocus_transparency"])
+    if event.widget == root:
+        root.wm_attributes("-alpha", settings["unfocus_transparency"])
 
 
 def open_settings_dialog():
@@ -479,101 +805,144 @@ def update_timer():
 
 
 def maximize_timer():
-    global is_maximized
-    if not is_maximized:
+    global is_maximized, is_updating_layout
+    is_updating_layout = True
+    try:
+        if not is_maximized:
+            try:
+                geom = root.geometry()
+                size = geom.split("+")[0]
+                w, h = map(int, size.split("x"))
+                w_base = w - settings.get("todo_sidebar_width", 250) if settings.get("todo_sidebar_visible", False) else w
+                settings["window_width"] = w_base
+                settings["window_height"] = h
+                save_settings()
+            except Exception as e:
+                print(f"Error saving window size: {e}")
+
+        is_maximized = True
+
+        # Hide regular layout controls
+        mode_frame.pack_forget()
+        mode_label.pack_forget()
+        start_btn.pack_forget()
+        continue_btn.pack_forget()
+        stop_btn.pack_forget()
         try:
-            geom = root.geometry()
-            size = geom.split("+")[0]
-            w, h = map(int, size.split("x"))
-            settings["window_width"] = w
-            settings["window_height"] = h
-            save_settings()
-        except Exception as e:
-            print(f"Error saving window size: {e}")
+            skip_btn.pack_forget()
+        except NameError:
+            pass
+        try:
+            maximize_btn.pack_forget()
+        except NameError:
+            pass
+        if todo_container is not None and paned is not None:
+            try:
+                paned.forget(todo_container)
+            except Exception:
+                pass
+        if sash_toggle_btn is not None:
+            try:
+                sash_toggle_btn.pack_forget()
+            except Exception:
+                pass
 
-    is_maximized = True
+        # Hide menu bar
+        root.config(menu="")
 
-    # Hide regular layout controls
-    mode_frame.pack_forget()
-    mode_label.pack_forget()
-    start_btn.pack_forget()
-    continue_btn.pack_forget()
-    stop_btn.pack_forget()
-    try:
-        skip_btn.pack_forget()
-    except NameError:
-        pass
-    try:
-        maximize_btn.pack_forget()
-    except NameError:
-        pass
+        # Resize window to a compact centered widget layout
+        width = settings.get("maximized_window_width", 240)
+        height = settings.get("maximized_window_height", 80)
+        root.geometry(f"{width}x{height}")
 
-    # Hide menu bar
-    root.config(menu="")
+        # Repack timer_frame with top padding to center beautifully
+        timer_frame.pack_forget()
+        timer_frame.pack(pady=(15, 5))
 
-    # Resize window to a compact centered widget layout
-    width = settings.get("maximized_window_width", 240)
-    height = settings.get("maximized_window_height", 80)
-    root.geometry(f"{width}x{height}")
-
-    # Repack timer_frame with top padding to center beautifully
-    timer_frame.pack_forget()
-    timer_frame.pack(pady=(15, 5))
-
-    # Show minimize button next to the timer
-    minimize_btn.pack(side="left", padx=(5, 0), anchor="center")
+        # Show minimize button next to the timer
+        minimize_btn.pack(side="left", padx=(5, 0), anchor="center")
+    finally:
+        root.after(100, reset_updating_layout)
 
 
 def minimize_timer():
-    global is_maximized
-    if is_maximized:
-        try:
-            geom = root.geometry()
-            size = geom.split("+")[0]
-            w, h = map(int, size.split("x"))
-            settings["maximized_window_width"] = w
-            settings["maximized_window_height"] = h
-            save_settings()
-        except Exception as e:
-            print(f"Error saving maximized window size: {e}")
+    global is_maximized, is_updating_layout
+    is_updating_layout = True
+    try:
+        if is_maximized:
+            try:
+                geom = root.geometry()
+                size = geom.split("+")[0]
+                w, h = map(int, size.split("x"))
+                settings["maximized_window_width"] = w
+                settings["maximized_window_height"] = h
+                save_settings()
+            except Exception as e:
+                print(f"Error saving maximized window size: {e}")
 
-    is_maximized = False
+        is_maximized = False
 
-    # Hide minimize button next to the timer
-    minimize_btn.pack_forget()
+        # Hide minimize button next to the timer
+        minimize_btn.pack_forget()
 
-    # Restore menu bar
-    root.config(menu=menu_bar)
+        # Restore menu bar
+        root.config(menu=menu_bar)
 
-    # Restore saved window geometry
-    width = settings.get("window_width", 290)
-    height = settings.get("window_height", 290)
-    root.geometry(f"{width}x{height}")
+        # Restore saved window geometry
+        width = settings.get("window_width", 290)
+        if settings.get("todo_sidebar_visible", False):
+            width += settings.get("todo_sidebar_width", 250)
+        height = settings.get("window_height", 290)
+        root.geometry(f"{width}x{height}")
 
-    # Restore standard timer_frame packing
-    timer_frame.pack_forget()
-    timer_frame.pack(pady=0)
+        # Restore standard timer_frame packing
+        timer_frame.pack_forget()
+        timer_frame.pack(pady=0)
 
-    # Pack core widgets back
-    mode_frame.pack(pady=(12, 0))
-    mode_label.pack(pady=(8, 0))
+        # Pack core widgets back
+        mode_frame.pack(pady=(12, 0))
+        mode_label.pack(pady=(8, 0))
 
-    # Restore controls based on whether the timer is running
-    if timer_running:
-        start_btn.pack(pady=4)
-        try:
-            maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
-        except NameError:
-            pass
-    else:
-        start_btn.pack(pady=4)
+        if settings.get("todo_sidebar_visible", False) and paned is not None:
+            if str(todo_container) not in paned.panes():
+                paned.add(todo_container, weight=1)
+            root.update_idletasks()
+            try:
+                paned.sashpos(0, settings.get("window_width", 290))
+            except Exception:
+                pass
+
+        if sash_toggle_btn is not None:
+            try:
+                sash_toggle_btn.pack(side="right", fill="y")
+            except Exception:
+                pass
+
+        # Restore controls based on whether the timer is running
+        if timer_running:
+            start_btn.pack(pady=4)
+            try:
+                maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
+            except NameError:
+                pass
+        else:
+            start_btn.pack(pady=4)
+    finally:
+        root.after(100, reset_updating_layout)
 
 
 def create_app():
     global root, mode_label, timer_label, start_btn, continue_btn, stop_btn, skip_btn, mode_frame, mode_var, maximize_btn, minimize_btn, menu_bar, timer_frame
+    global main_container, todo_container, todo_entry, todo_list_frame, todo_list_canvas, sash_toggle_btn, editing_todo_ids, paned
     root = tb.Window(themename="superhero")
     apply_window_icon(root)
     root.title("Pomodoro")
+    
+    # Force todo list to be invisible at startup
+    settings["todo_sidebar_visible"] = False
+    
+    sidebar_visible = False
+    sidebar_w = settings.get("todo_sidebar_width", 250)
     if settings.get("is_maximized_state", False):
         width = settings.get("maximized_window_width", 240)
         height = settings.get("maximized_window_height", 80)
@@ -583,9 +952,25 @@ def create_app():
     root.geometry(f"{width}x{height}")
     root.attributes("-topmost", True)
 
+    paned = tb.Panedwindow(root, orient="horizontal")
+    paned.pack(fill="both", expand=True)
+
+    main_container = tb.Frame(paned)
+    paned.add(main_container, weight=0)
+
+    # Left pane layout: timer_controls_frame for standard centered controls, sash_toggle_btn on the right edge
+    timer_controls_frame = tb.Frame(main_container)
+    timer_controls_frame.pack(side="left", fill="both", expand=True)
+
+    sash_toggle_btn = SashToggleButton(
+        main_container,
+        command=toggle_todo_sidebar
+    )
+    sash_toggle_btn.pack(side="right", fill="y")
+
     # Added toggle mode frame to main UI
     mode_var = tk.StringVar(value=settings.get("timer_mode", "Pomodoro"))
-    mode_frame = tb.Frame(root)
+    mode_frame = tb.Frame(timer_controls_frame)
     mode_frame.pack(pady=(12, 0))
 
     def on_mode_change(*args):
@@ -606,10 +991,10 @@ def create_app():
         mode_frame, text="Stopwatch", variable=mode_var, value="Stopwatch"
     ).pack(side="left", padx=5)
 
-    mode_label = tb.Label(root, text="", font=(FONT_FAMILY, 12, "bold"))
+    mode_label = tb.Label(timer_controls_frame, text="", font=(FONT_FAMILY, 12, "bold"))
     mode_label.pack(pady=(8, 0))
 
-    timer_frame = tb.Frame(root)
+    timer_frame = tb.Frame(timer_controls_frame)
     timer_frame.pack(pady=0)
 
     timer_label = tb.Label(
@@ -618,18 +1003,18 @@ def create_app():
     timer_label.pack(side="left")
 
     start_btn = tb.Button(
-        root, text="Start", command=start_pomodoro, bootstyle="primary", width=12
+        timer_controls_frame, text="Start", command=start_pomodoro, bootstyle="primary", width=12
     )
     start_btn.pack(pady=4)
 
     continue_btn = tb.Button(
-        root, text="Continue", command=continue_pomodoro, bootstyle="success", width=12
+        timer_controls_frame, text="Continue", command=continue_pomodoro, bootstyle="success", width=12
     )
     stop_btn = tb.Button(
-        root, text="Stop", command=stop_pomodoro, bootstyle="danger", width=12
+        timer_controls_frame, text="Stop", command=stop_pomodoro, bootstyle="danger", width=12
     )
     skip_btn = tb.Button(
-        root, text="Skip Break", command=skip_break, bootstyle="secondary", width=12
+        timer_controls_frame, text="Skip Break", command=skip_break, bootstyle="secondary", width=12
     )
 
     maximize_btn = tb.Label(
@@ -640,6 +1025,80 @@ def create_app():
         timer_frame, text="⤡", cursor="hand2", font=(FONT_FAMILY, 18), bootstyle="info"
     )
     minimize_btn.bind("<Button-1>", lambda e: minimize_timer())
+
+    # Todo UI layout
+    editing_todo_ids = set()
+    todo_container = tb.Frame(paned)
+    todo_container.bind("<Configure>", on_pane_configure)
+    main_container.bind("<Configure>", on_pane_configure)
+    
+    todo_title = tb.Label(todo_container, text="📝 Todos", font=(FONT_FAMILY, 12, "bold"), bootstyle="info")
+    todo_title.pack(anchor="w", pady=(5, 5), padx=5)
+    
+    input_frame = tb.Frame(todo_container)
+    input_frame.pack(fill="x", pady=2, padx=5)
+    
+    todo_entry = tb.Entry(input_frame, font=(FONT_FAMILY, 10), bootstyle="secondary")
+    todo_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+    todo_entry.bind("<Return>", lambda e: add_todo_item())
+    
+    add_btn = tb.Button(input_frame, text="Add", command=add_todo_item, bootstyle="info", width=5)
+    add_btn.pack(side="right")
+    
+    list_container = tb.Frame(todo_container)
+    list_container.pack(fill="both", expand=True, pady=5)
+    
+    bg_color = tb.Style().colors.bg
+    todo_list_canvas = tk.Canvas(list_container, borderwidth=0, highlightthickness=0, bg=bg_color)
+    todo_scrollbar = tb.Scrollbar(list_container, orient="vertical", command=todo_list_canvas.yview)
+    
+    todo_list_frame = tb.Frame(todo_list_canvas)
+    canvas_window = todo_list_canvas.create_window((0, 0), window=todo_list_frame, anchor="nw", width=220)
+    
+    def on_canvas_configure(event):
+        todo_list_canvas.itemconfig(canvas_window, width=event.width)
+        
+    todo_list_canvas.bind("<Configure>", on_canvas_configure)
+    
+    todo_list_frame.bind(
+        "<Configure>",
+        lambda e: todo_list_canvas.configure(
+            scrollregion=todo_list_canvas.bbox("all")
+        )
+    )
+    
+    todo_list_canvas.configure(yscrollcommand=todo_scrollbar.set)
+    todo_list_canvas.pack(side="left", fill="both", expand=True)
+    todo_scrollbar.pack(side="right", fill="y")
+    
+    def _on_mousewheel(event):
+        if sys.platform == "win32":
+            todo_list_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        elif sys.platform == "darwin":
+            todo_list_canvas.yview_scroll(int(-1 * event.delta), "units")
+        else:
+            if event.num == 4:
+                todo_list_canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                todo_list_canvas.yview_scroll(1, "units")
+                
+    def bind_mousewheel(event):
+        todo_list_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        if sys.platform == "linux":
+            todo_list_canvas.bind_all("<Button-4>", _on_mousewheel)
+            todo_list_canvas.bind_all("<Button-5>", _on_mousewheel)
+
+    def unbind_mousewheel(event):
+        todo_list_canvas.unbind_all("<MouseWheel>")
+        if sys.platform == "linux":
+            todo_list_canvas.unbind_all("<Button-4>")
+            todo_list_canvas.unbind_all("<Button-5>")
+
+    todo_list_canvas.bind("<Enter>", bind_mousewheel)
+    todo_list_canvas.bind("<Leave>", unbind_mousewheel)
+    
+    render_todos()
+    update_todo_layout()
 
     def increase_font():
         settings["label_font_size"] = min(settings["label_font_size"] + 2, 72)
@@ -729,6 +1188,7 @@ def create_app():
     root.config(menu=menu_bar)
 
     menu_bar.add_command(label="🔧", command=open_settings_dialog)
+    menu_bar.add_command(label="📋", command=toggle_todo_sidebar)
     menu_bar.add_command(label="📊", command=open_report_dialog)
     menu_bar.add_command(label="➕", command=increase_font)
     menu_bar.add_command(label="➖", command=decrease_font)
@@ -755,7 +1215,8 @@ def create_app():
                 settings["maximized_window_width"] = w
                 settings["maximized_window_height"] = h
             else:
-                settings["window_width"] = w
+                if not settings.get("todo_sidebar_visible", False):
+                    settings["window_width"] = w
                 settings["window_height"] = h
             save_settings()
         except Exception as e:
@@ -764,6 +1225,7 @@ def create_app():
 
     root.protocol("WM_DELETE_WINDOW", on_close)
 
+    root.after(150, reset_updating_layout)
     root.mainloop()
 
 

@@ -7,9 +7,11 @@
     "unfocus_transparency": 0.8,
     "label_font_size": 42,
     "timer_mode": "Pomodoro",
-    "window_width": 330,
-    "window_height": 260,
+    "window_width": 354,
+    "window_height": 281,
     "maximized_window_width": 240,
-    "maximized_window_height": 106,
-    "is_maximized_state": false
+    "maximized_window_height": 111,
+    "is_maximized_state": false,
+    "todo_sidebar_visible": true,
+    "todo_sidebar_width": 328
 }

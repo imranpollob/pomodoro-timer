@@ -44,6 +44,18 @@ class FakeWidget:
     def bind(self, event, callback):
         pass
 
+    def destroy(self):
+        pass
+
+    def update_idletasks(self):
+        pass
+
+    def itemconfig(self, *args, **kwargs):
+        pass
+
+    def set_text(self, text):
+        self.config(text=text)
+
 
 class FakeChild:
     def __init__(self):
@@ -51,6 +63,9 @@ class FakeChild:
 
     def configure(self, **kwargs):
         self.states.append(kwargs)
+
+    def destroy(self):
+        pass
 
 
 class FakeFrame(FakeWidget):
@@ -96,9 +111,25 @@ class FakeRoot:
             return geom_str
         return self.current_geom
 
+    def update_idletasks(self):
+        pass
+
+
+class FakeEntry(FakeWidget):
+    def __init__(self, initial_text=""):
+        super().__init__()
+        self.text = initial_text
+
+    def get(self):
+        return self.text
+
+    def delete(self, start, end):
+        self.text = ""
+
 
 def reset_state(tmp_path, monkeypatch):
     monkeypatch.setattr(pomodoro, "SETTINGS_FILE", str(tmp_path / "settings.json"))
+    monkeypatch.setattr(pomodoro, "TODOS_FILE", tmp_path / "todos.json")
     monkeypatch.setattr(pomodoro, "settings", DEFAULT_SETTINGS.copy())
     monkeypatch.setattr(pomodoro, "current_mode", "Work")
     monkeypatch.setattr(pomodoro, "completed_pomodoros", 0)
@@ -107,6 +138,31 @@ def reset_state(tmp_path, monkeypatch):
     monkeypatch.setattr(pomodoro, "is_maximized", False)
     monkeypatch.setattr(pomodoro, "stopwatch_start_time", None)
     monkeypatch.setattr(pomodoro, "stopwatch_accumulated_seconds", 0)
+    monkeypatch.setattr(pomodoro, "todos", [])
+    monkeypatch.setattr(pomodoro, "editing_todo_ids", set())
+
+
+class FakePaned(FakeWidget):
+    def __init__(self):
+        super().__init__()
+        self.panes_list = []
+        self.sash_pos = None
+
+    def add(self, child, **kwargs):
+        self.panes_list.append(str(child))
+
+    def forget(self, child):
+        if str(child) in self.panes_list:
+            self.panes_list.remove(str(child))
+
+    def panes(self):
+        return self.panes_list
+
+    def sashpos(self, index, pos=None):
+        if pos is not None:
+            self.sash_pos = pos
+            return pos
+        return self.sash_pos or 1
 
 
 def attach_fake_ui(monkeypatch):
@@ -123,6 +179,13 @@ def attach_fake_ui(monkeypatch):
     monkeypatch.setattr(pomodoro, "minimize_btn", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "menu_bar", FakeWidget(), raising=False)
     monkeypatch.setattr(pomodoro, "mode_frame", FakeFrame(), raising=False)
+    monkeypatch.setattr(pomodoro, "main_container", FakeWidget(), raising=False)
+    monkeypatch.setattr(pomodoro, "todo_container", FakeWidget(), raising=False)
+    monkeypatch.setattr(pomodoro, "todo_entry", FakeEntry(), raising=False)
+    monkeypatch.setattr(pomodoro, "todo_list_frame", FakeFrame(), raising=False)
+    monkeypatch.setattr(pomodoro, "todo_list_canvas", FakeWidget(), raising=False)
+    monkeypatch.setattr(pomodoro, "sash_toggle_btn", FakeWidget(), raising=False)
+    monkeypatch.setattr(pomodoro, "paned", FakePaned(), raising=False)
     return root
 
 
@@ -588,6 +651,86 @@ def test_transition_saves_sizes_immediately(tmp_path, monkeypatch):
     
     assert pomodoro.settings["maximized_window_width"] == 260
     assert pomodoro.settings["maximized_window_height"] == 95
+
+
+def test_add_todo_item(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    attach_fake_ui(monkeypatch)
+    monkeypatch.setattr(pomodoro, "render_todos", lambda: None)
+    
+    fake_entry = FakeEntry("Buy groceries")
+    monkeypatch.setattr(pomodoro, "todo_entry", fake_entry)
+    
+    pomodoro.add_todo_item()
+    
+    assert len(pomodoro.todos) == 1
+    assert pomodoro.todos[0]["text"] == "Buy groceries"
+    assert pomodoro.todos[0]["done"] is False
+    assert fake_entry.get() == ""  # Check that it cleared input entry
+    
+    # Verify file saved
+    saved_todos = json.loads(pomodoro.TODOS_FILE.read_text(encoding="utf-8"))
+    assert len(saved_todos) == 1
+    assert saved_todos[0]["text"] == "Buy groceries"
+
+
+def test_toggle_todo_status(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    attach_fake_ui(monkeypatch)
+    monkeypatch.setattr(pomodoro, "render_todos", lambda: None)
+    
+    todo = {"id": 12345, "text": "Wash dishes", "done": False}
+    pomodoro.todos = [todo]
+    
+    pomodoro.toggle_todo_status(todo, True)
+    
+    assert pomodoro.todos[0]["done"] is True
+    
+    # Verify file updated
+    saved_todos = json.loads(pomodoro.TODOS_FILE.read_text(encoding="utf-8"))
+    assert saved_todos[0]["done"] is True
+
+
+def test_delete_todo_item(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    attach_fake_ui(monkeypatch)
+    monkeypatch.setattr(pomodoro, "render_todos", lambda: None)
+    
+    todo1 = {"id": 1, "text": "Task 1", "done": False}
+    todo2 = {"id": 2, "text": "Task 2", "done": False}
+    pomodoro.todos = [todo1, todo2]
+    
+    pomodoro.delete_todo_item(todo1)
+    
+    assert len(pomodoro.todos) == 1
+    assert pomodoro.todos[0]["id"] == 2
+    
+    # Verify file updated
+    saved_todos = json.loads(pomodoro.TODOS_FILE.read_text(encoding="utf-8"))
+    assert len(saved_todos) == 1
+    assert saved_todos[0]["id"] == 2
+
+
+def test_toggle_todo_sidebar_updates_settings_and_geometry(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    root = attach_fake_ui(monkeypatch)
+    
+    pomodoro.settings["todo_sidebar_visible"] = False
+    root.current_geom = "290x290+100+100"
+    
+    # Toggle sidebar to show it
+    pomodoro.toggle_todo_sidebar()
+    
+    assert pomodoro.settings["todo_sidebar_visible"] is True
+    # Window width should expand from 290 to 540
+    assert root.geometry_calls[-1] == "540x290+100+100"
+    
+    # Toggle sidebar to hide it
+    pomodoro.toggle_todo_sidebar()
+    
+    assert pomodoro.settings["todo_sidebar_visible"] is False
+    # Window width should collapse back from 540 to 290
+    assert root.geometry_calls[-1] == "290x290+100+100"
 
 
 
