@@ -28,6 +28,11 @@ settings = {
     "unfocus_transparency": 0.8,
     "label_font_size": 42,
     "timer_mode": "Pomodoro",
+    "window_width": 290,
+    "window_height": 290,
+    "maximized_window_width": 240,
+    "maximized_window_height": 80,
+    "is_maximized_state": False,
 }
 
 current_mode = "Work"
@@ -460,6 +465,17 @@ def update_timer():
 
 def maximize_timer():
     global is_maximized
+    if not is_maximized:
+        try:
+            geom = root.geometry()
+            size = geom.split("+")[0]
+            w, h = map(int, size.split("x"))
+            settings["window_width"] = w
+            settings["window_height"] = h
+            save_settings()
+        except Exception as e:
+            print(f"Error saving window size: {e}")
+
     is_maximized = True
 
     # Hide regular layout controls
@@ -481,7 +497,9 @@ def maximize_timer():
     root.config(menu="")
 
     # Resize window to a compact centered widget layout
-    root.geometry("240x80")
+    width = settings.get("maximized_window_width", 240)
+    height = settings.get("maximized_window_height", 80)
+    root.geometry(f"{width}x{height}")
 
     # Repack timer_frame with top padding to center beautifully
     timer_frame.pack_forget()
@@ -493,6 +511,17 @@ def maximize_timer():
 
 def minimize_timer():
     global is_maximized
+    if is_maximized:
+        try:
+            geom = root.geometry()
+            size = geom.split("+")[0]
+            w, h = map(int, size.split("x"))
+            settings["maximized_window_width"] = w
+            settings["maximized_window_height"] = h
+            save_settings()
+        except Exception as e:
+            print(f"Error saving maximized window size: {e}")
+
     is_maximized = False
 
     # Hide minimize button next to the timer
@@ -501,8 +530,10 @@ def minimize_timer():
     # Restore menu bar
     root.config(menu=menu_bar)
 
-    # Restore default window geometry
-    root.geometry("290x290")
+    # Restore saved window geometry
+    width = settings.get("window_width", 290)
+    height = settings.get("window_height", 290)
+    root.geometry(f"{width}x{height}")
 
     # Restore standard timer_frame packing
     timer_frame.pack_forget()
@@ -528,7 +559,13 @@ def create_app():
     root = tb.Window(themename="superhero")
     apply_window_icon(root)
     root.title("Pomodoro")
-    root.geometry("290x290")
+    if settings.get("is_maximized_state", False):
+        width = settings.get("maximized_window_width", 240)
+        height = settings.get("maximized_window_height", 80)
+    else:
+        width = settings.get("window_width", 290)
+        height = settings.get("window_height", 290)
+    root.geometry(f"{width}x{height}")
     root.attributes("-topmost", True)
 
     # Added toggle mode frame to main UI
@@ -689,6 +726,28 @@ def create_app():
         set_mode("Stopwatch")
     else:
         set_mode("Work")
+
+    if settings.get("is_maximized_state", False):
+        maximize_timer()
+
+    def on_close():
+        try:
+            settings["is_maximized_state"] = is_maximized
+            geom = root.geometry()
+            size = geom.split("+")[0]
+            w, h = map(int, size.split("x"))
+            if is_maximized:
+                settings["maximized_window_width"] = w
+                settings["maximized_window_height"] = h
+            else:
+                settings["window_width"] = w
+                settings["window_height"] = h
+            save_settings()
+        except Exception as e:
+            print(f"Error saving window size on close: {e}")
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", on_close)
 
     root.mainloop()
 

@@ -16,6 +16,11 @@ DEFAULT_SETTINGS = {
     "unfocus_transparency": 0.8,
     "label_font_size": 42,
     "timer_mode": "Pomodoro",
+    "window_width": 290,
+    "window_height": 290,
+    "maximized_window_width": 240,
+    "maximized_window_height": 80,
+    "is_maximized_state": False,
 }
 
 
@@ -58,13 +63,14 @@ class FakeFrame(FakeWidget):
 
 
 class FakeRoot:
-    def __init__(self):
+    def __init__(self, current_geom="290x290+100+100"):
         self.after_calls = []
         self.bell_calls = 0
         self.attribute_calls = []
         self.wm_attribute_calls = []
         self.config_calls = []
         self.geometry_calls = []
+        self.current_geom = current_geom
 
     def after(self, delay, callback):
         self.after_calls.append((delay, callback))
@@ -83,8 +89,12 @@ class FakeRoot:
 
     configure = config
 
-    def geometry(self, geom_str):
-        self.geometry_calls.append(geom_str)
+    def geometry(self, geom_str=None):
+        if geom_str is not None:
+            self.geometry_calls.append(geom_str)
+            self.current_geom = geom_str
+            return geom_str
+        return self.current_geom
 
 
 def reset_state(tmp_path, monkeypatch):
@@ -531,6 +541,55 @@ def test_reset_today_stats_removes_only_todays_entries(tmp_path, monkeypatch):
     assert today not in dates_remaining
     assert yesterday in dates_remaining
     assert two_days_ago in dates_remaining
+
+
+def test_minimize_timer_restores_custom_geometry(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    root = attach_fake_ui(monkeypatch)
+    pomodoro.settings["window_width"] = 400
+    pomodoro.settings["window_height"] = 500
+    
+    pomodoro.minimize_timer()
+    
+    assert root.geometry_calls[-1] == "400x500"
+
+
+def test_maximize_timer_uses_custom_geometry(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    root = attach_fake_ui(monkeypatch)
+    pomodoro.settings["maximized_window_width"] = 300
+    pomodoro.settings["maximized_window_height"] = 120
+    
+    pomodoro.maximize_timer()
+    
+    assert root.geometry_calls[-1] == "300x120"
+
+
+def test_transition_saves_sizes_immediately(tmp_path, monkeypatch):
+    reset_state(tmp_path, monkeypatch)
+    root = attach_fake_ui(monkeypatch)
+    
+    # 1. Standard mode: set custom geometry mock
+    root.current_geom = "350x350+120+120"
+    monkeypatch.setattr(pomodoro, "is_maximized", False)
+    
+    # Maximize (Standard -> Compact transition)
+    pomodoro.maximize_timer()
+    
+    assert pomodoro.settings["window_width"] == 350
+    assert pomodoro.settings["window_height"] == 350
+    
+    # 2. Compact mode: set custom maximized geometry mock
+    root.current_geom = "260x95+120+120"
+    monkeypatch.setattr(pomodoro, "is_maximized", True)
+    
+    # Minimize (Compact -> Standard transition)
+    pomodoro.minimize_timer()
+    
+    assert pomodoro.settings["maximized_window_width"] == 260
+    assert pomodoro.settings["maximized_window_height"] == 95
+
+
 
 
 
