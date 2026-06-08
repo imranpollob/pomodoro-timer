@@ -8,7 +8,8 @@ A simple pomodoro timer featuring useful functionalities.
 - Audio notifications on session completion
 - Adjustable font size for a customizable desktop clock feel
 - Always on top, with transparency when unfocused
-- Timer mamimize and minimize option for minimal distraction
+- Timer maximize and minimize option for minimal distraction
+- Remembers and restores custom window dimensions (separately for standard and compact layouts) and your layout state on relaunch
 
 ## Screenshots
 
@@ -43,6 +44,11 @@ sudo dpkg -i pomodoro-timer_amd64.deb
 uv run pyinstaller --clean --noconfirm pomodoro.spec
 ```
 Then run `dist/pomodoro.exe`.
+
+## Configuration
+Settings (`settings.json`) and session statistics (`history.json`) are stored in the user profile directory:
+- **Windows**: `%APPDATA%\pomodoro-timer\` (e.g., `C:\Users\<username>\AppData\Roaming\pomodoro-timer\`)
+- **Linux**: `~/.config/pomodoro-timer/`
 
 ## Running tests
 ```bash
