@@ -1,5 +1,5 @@
 # Pomodoro Timer
-A simple pomodoro timer featuring useful functionalities.
+A desktop Pomodoro timer and stopwatch app built with Python and Tkinter (ttkbootstrap). It includes a collapsible todo list, daily stats, sound alerts, and customizable window sizes and transparency.
 
 ## Features
 - Customizable Pomodoro cycles: Work, Short Break, Long Break
@@ -32,7 +32,7 @@ We use `uv` for dependency management. Install it from [here](https://docs.astra
 
 ### Run directly (all platforms)
 ```bash
-uv run pomodoro.py
+uv run src/pomodoro.py
 ```
 
 ### Linux — Install as a desktop app (.deb)

@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['pomodoro.py'],
+    ['src/pomodoro.py'],
     pathex=[],
     binaries=[],
-    datas=[('stopwatch.ico', '.'), ('complete.oga', '.')],
+    datas=[('src/stopwatch.ico', '.'), ('src/complete.oga', '.')],
     hiddenimports=['PIL._tkinter_finder'],
     hookspath=[],
     hooksconfig={},
@@ -35,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='stopwatch.ico',
+    icon='src/stopwatch.ico',
 )
