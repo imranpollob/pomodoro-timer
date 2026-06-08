@@ -2,23 +2,27 @@
 A simple pomodoro timer featuring useful functionalities.
 
 ## Features
-- Customizable Pomodoro cycles: Work (25m), Short Break (5m), Long Break (15m)
+- Customizable Pomodoro cycles: Work, Short Break, Long Break
 - Endless Timer/Stopwatch mode for custom focus sessions
 - Daily Report with today's focus statistics and a statistics reset option in settings
 - Audio notifications on session completion
 - Adjustable font size for a customizable desktop clock feel
-- Always on top, with transparency when unfocused
+- Always on top, with transparency option when unfocused
 - Timer maximize and minimize option for minimal distraction
-- Remembers and restores custom window dimensions (separately for standard and compact layouts) and your layout state on relaunch
+- Collapsible & Resizable Todo management sidebar
+- Remembers and restores custom window dimensions
 
 ## Screenshots
 
-![screen-1](screen-1.png)
-![screen-2](screen-2.png)
+![screen-1](images/main.png)
 
-![settings](settings.png)
+![screen-1](images/stopwatch.png)
 
-![report](report.png)
+![screen-2](images/todos.png)
+
+![settings](images/settings.png)
+
+![report](images/report.png)
 
 ## Setup
 
