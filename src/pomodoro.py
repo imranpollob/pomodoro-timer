@@ -683,15 +683,24 @@ class PomodoroApp:
                 text=f"{mode} {self.completed_pomodoros + 1}/{self.settings['long_break_interval']}",
                 bootstyle="primary",
             )
+            self.skip_btn.pack_forget()
         elif mode == "Short Break":
             self.pomodoro_time = self.settings["short_break"] * 60
             self.mode_label.config(text=mode, bootstyle="success")
+            self.stop_btn.pack_forget()
+            if not self.is_maximized:
+                self.skip_btn.pack(pady=4)
         elif mode == "Long Break":
             self.pomodoro_time = self.settings["long_break"] * 60
             self.mode_label.config(text=mode, bootstyle="success")
+            self.stop_btn.pack_forget()
+            if not self.is_maximized:
+                self.skip_btn.pack(pady=4)
         elif mode == "Stopwatch":
             self.pomodoro_time = 0
             self.mode_label.config(text=mode, bootstyle="secondary")
+            self.skip_btn.pack_forget()
+            self.stop_btn.pack_forget()
             
         minutes, seconds = divmod(self.pomodoro_time, 60)
         self.timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
@@ -718,7 +727,12 @@ class PomodoroApp:
                 text="Pause", command=self.pause_pomodoro, bootstyle="warning"
             )
             self.start_btn.pack(pady=4)
-            self.stop_btn.pack(pady=4)
+            if self.current_mode in ["Short Break", "Long Break"]:
+                self.skip_btn.pack(pady=4)
+                self.stop_btn.pack_forget()
+            else:
+                self.stop_btn.pack(pady=4)
+                self.skip_btn.pack_forget()
             self.update_timer()
 
     def pause_pomodoro(self):
@@ -778,6 +792,13 @@ class PomodoroApp:
 
     def skip_break(self):
         self.timer_running = False
+        if self.current_mode in ["Short Break", "Long Break"]:
+            total_duration = (
+                self.settings["short_break"] * 60 if self.current_mode == "Short Break" else self.settings["long_break"] * 60
+            )
+            elapsed = total_duration - self.pomodoro_time
+            self.storage.log_session(self.current_mode, elapsed)
+
         self.start_btn.config(
             text="Start", command=self.start_pomodoro, bootstyle="primary"
         )
@@ -940,8 +961,15 @@ class PomodoroApp:
                     pass
 
             self.start_btn.pack(pady=4)
-            if self.start_btn.cget("text") in ["Pause", "Continue"]:
+            if self.current_mode in ["Short Break", "Long Break"]:
+                self.skip_btn.pack(pady=4)
+                self.stop_btn.pack_forget()
+            elif self.start_btn.cget("text") in ["Pause", "Continue"]:
                 self.stop_btn.pack(pady=4)
+                self.skip_btn.pack_forget()
+            else:
+                self.stop_btn.pack_forget()
+                self.skip_btn.pack_forget()
             try:
                 self.maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
             except NameError:

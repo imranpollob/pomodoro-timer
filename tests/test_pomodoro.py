@@ -36,6 +36,12 @@ class FakeWidget:
 
     configure = config
 
+    def cget(self, key):
+        for call in reversed(self.config_calls):
+            if key in call:
+                return call[key]
+        return ""
+
     def pack(self, **kwargs):
         self.pack_calls.append(kwargs)
 
@@ -428,6 +434,27 @@ def test_skip_break_moves_to_work_mode(tmp_path, monkeypatch):
     assert modes == ["Work"]
 
 
+def test_set_mode_break_packs_skip_btn(tmp_path):
+    app = get_test_app(tmp_path)
+    app.set_mode("Short Break")
+    assert app.skip_btn.pack_calls[-1] == {"pady": 4}
+
+
+def test_start_pomodoro_in_break_packs_skip_btn(tmp_path):
+    app = get_test_app(tmp_path)
+    app.current_mode = "Short Break"
+    app.start_pomodoro()
+    assert app.skip_btn.pack_calls[-1] == {"pady": 4}
+
+
+def test_set_mode_break_hides_stop_btn(tmp_path):
+    app = get_test_app(tmp_path)
+    app.set_mode("Short Break")
+    assert app.stop_btn.pack_forget_calls == 1
+
+
+
+
 def test_log_session_ignores_short_sessions(tmp_path):
     storage = StorageManager(history_file=tmp_path / "history.json")
     storage.log_session("Work", 5)
@@ -498,7 +525,7 @@ def test_minimize_timer_restores_controls_when_completed(tmp_path):
     assert len(app.mode_frame.pack_calls) == 1
     assert len(app.mode_label.pack_calls) == 1
     assert len(app.start_btn.pack_calls) == 1
-    assert len(app.maximize_btn.pack_calls) == 0
+    assert app.maximize_btn.pack_calls[-1] == {"side": "left", "padx": (5, 0), "anchor": "center"}
 
 
 def test_update_timer_auto_minimizes_when_done(tmp_path, monkeypatch):
