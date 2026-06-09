@@ -31,6 +31,8 @@ DEFAULT_SETTINGS = {
 
 
 class StorageManager:
+    """Manages application settings, todos, and history storage."""
+
     def __init__(self, settings_file=None, todos_file=None, history_file=None):
         self.settings_file = Path(settings_file) if settings_file else CONFIG_DIR / "settings.json"
         self.todos_file = Path(todos_file) if todos_file else CONFIG_DIR / "todos.json"
@@ -43,6 +45,7 @@ class StorageManager:
         self.load_todos()
 
     def load_settings(self):
+        """Loads settings from the settings file."""
         if self.settings_file.exists():
             try:
                 with open(self.settings_file, "r") as f:
@@ -52,6 +55,7 @@ class StorageManager:
                 print(f"Error loading settings: {e}")
 
     def save_settings(self):
+        """Saves current settings to the settings file."""
         try:
             with open(self.settings_file, "w") as f:
                 json.dump(self.settings, f, indent=4)
@@ -59,6 +63,7 @@ class StorageManager:
             print(f"Error saving settings: {e}")
 
     def load_todos(self):
+        """Loads the todo list from the todos file."""
         if self.todos_file.exists():
             try:
                 with open(self.todos_file, "r") as f:
@@ -70,6 +75,7 @@ class StorageManager:
             self.todos = []
 
     def save_todos(self):
+        """Saves the current todo list to the todos file."""
         try:
             with open(self.todos_file, "w") as f:
                 json.dump(self.todos, f, indent=4)
@@ -77,6 +83,7 @@ class StorageManager:
             print(f"Error saving todos: {e}")
 
     def load_history(self):
+        """Loads the session history from the history file."""
         if self.history_file.exists():
             try:
                 with open(self.history_file, "r") as f:
@@ -86,6 +93,7 @@ class StorageManager:
         return []
 
     def log_session(self, session_type, duration_seconds):
+        """Logs a completed session to the history."""
         if duration_seconds < 10:
             return
         history = self.load_history()
@@ -102,6 +110,7 @@ class StorageManager:
             print(f"Error saving history: {e}")
 
     def reset_today_stats(self):
+        """Resets the statistics for the current day."""
         today = date.today().isoformat()
         history = self.load_history()
         new_history = [s for s in history if s.get("date") != today]

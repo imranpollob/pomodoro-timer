@@ -14,10 +14,7 @@ if sys.platform == "darwin":
 
 import tkinter as tk
 import ttkbootstrap as tb
-from ttkbootstrap.constants import *
-import json
 import os
-from pathlib import Path
 from datetime import datetime, date
 from storage import StorageManager
 from widgets import SashToggleButton
@@ -26,6 +23,7 @@ FONT_FAMILY = "Helvetica"
 
 
 def get_resource_path(filename):
+    """Gets the absolute path to a resource file, works for dev and for PyInstaller."""
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         base_path = sys._MEIPASS
     else:
@@ -34,6 +32,7 @@ def get_resource_path(filename):
 
 
 def apply_window_icon(window):
+    """Applies the application icon to the given Tkinter window."""
     icon_path = get_resource_path("stopwatch.ico")
     if os.path.exists(icon_path):
         try:
@@ -43,7 +42,10 @@ def apply_window_icon(window):
 
 
 class PomodoroApp:
+    """Main application class for the Pomodoro Timer."""
+
     def __init__(self, storage_manager, headless=False):
+        """Initializes the PomodoroApp with a storage manager and optional headless mode."""
         self.storage = storage_manager
         self.settings = self.storage.settings
         
@@ -481,17 +483,17 @@ class PomodoroApp:
                 )
                 lbl.bind("<Double-1>", lambda e, tid=todo_id: self.start_edit(tid))
                 
-                def make_configure_handler(frame=item_frame, l=lbl):
+                def make_configure_handler(frame=item_frame, label_widget=lbl):
                     def handler(event):
                         if event.widget != frame:
                             return
                         lbl_width = max(50, event.width - 135)
                         try:
-                            current_wrap = int(l.cget("wraplength"))
+                            current_wrap = int(label_widget.cget("wraplength"))
                         except ValueError:
                             current_wrap = 0
                         if current_wrap != lbl_width:
-                            l.configure(wraplength=lbl_width)
+                            label_widget.configure(wraplength=lbl_width)
                     return handler
                     
                 item_frame.bind("<Configure>", make_configure_handler(item_frame, lbl))
