@@ -33,12 +33,41 @@ def get_resource_path(filename):
 
 def apply_window_icon(window):
     """Applies the application icon to the given Tkinter window."""
-    icon_path = get_resource_path("stopwatch.ico")
-    if os.path.exists(icon_path):
+    # 1. Platform-specific dock/app icon for macOS using AppKit
+    if sys.platform == "darwin":
         try:
-            window.iconbitmap(icon_path)
-        except tk.TclError:
+            from AppKit import NSApplication, NSImage
+            # Try png first, then icns, then ico
+            for ext in ["png", "icns", "ico"]:
+                icon_path = get_resource_path(f"stopwatch.{ext}")
+                if os.path.exists(icon_path):
+                    image = NSImage.alloc().initWithContentsOfFile_(icon_path)
+                    if image:
+                        NSApplication.sharedApplication().setApplicationIconImage_(image)
+                        break
+        except Exception:
             pass
+
+    # 2. Window-level icon for title bar using iconphoto (cross-platform)
+    try:
+        # Try png first for high quality transparency
+        png_path = get_resource_path("stopwatch.png")
+        if os.path.exists(png_path):
+            img = tk.PhotoImage(file=png_path)
+            window.iconphoto(True, img)
+            # Keep a reference to prevent garbage collection
+            window._icon_image = img
+            return
+    except Exception:
+        pass
+
+    # Fallback to ico for Windows if png loading fails
+    try:
+        ico_path = get_resource_path("stopwatch.ico")
+        if os.path.exists(ico_path):
+            window.iconbitmap(ico_path)
+    except Exception:
+        pass
 
 
 class PomodoroApp:

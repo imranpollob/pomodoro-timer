@@ -5,7 +5,7 @@ a = Analysis(
     ['src/pomodoro.py'],
     pathex=[],
     binaries=[],
-    datas=[('src/stopwatch.ico', '.'), ('src/complete.oga', '.')],
+    datas=[('src/stopwatch.ico', '.'), ('src/stopwatch.png', '.'), ('src/stopwatch.icns', '.'), ('src/complete.oga', '.')],
     hiddenimports=['PIL._tkinter_finder'],
     hookspath=[],
     hooksconfig={},
@@ -43,7 +43,7 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         exe,
         name='Pomodoro.app',
-        icon='src/stopwatch.ico',
+        icon='src/stopwatch.icns',
         bundle_identifier='com.imranpollob.pomodoro-timer',
         info_plist={
             'CFBundleName': 'Pomodoro',
