@@ -37,3 +37,20 @@ exe = EXE(
     entitlements_file=None,
     icon='src/stopwatch.ico',
 )
+
+import sys
+if sys.platform == 'darwin':
+    app = BUNDLE(
+        exe,
+        name='Pomodoro.app',
+        icon='src/stopwatch.ico',
+        bundle_identifier='com.imranpollob.pomodoro-timer',
+        info_plist={
+            'CFBundleName': 'Pomodoro',
+            'CFBundleDisplayName': 'Pomodoro',
+            'CFBundleIdentifier': 'com.imranpollob.pomodoro-timer',
+            'CFBundleVersion': '0.1.0',
+            'CFBundleShortVersionString': '0.1.0',
+            'NSHighResolutionCapable': True,
+        }
+    )

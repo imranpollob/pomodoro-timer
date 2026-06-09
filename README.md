@@ -7,7 +7,7 @@ A desktop Pomodoro timer and stopwatch app built with Python and Tkinter (ttkboo
 - Daily Report with today's focus statistics and a statistics reset option in settings
 - Audio notifications on session completion
 - Adjustable font size for a customizable desktop clock feel
-- Always on top, with transparency option when unfocused
+- Always on top, with transparency option when unfocused (transparency on macOS in progress)
 - Timer maximize and minimize option for minimal distraction
 - Collapsible & Resizable Todo management sidebar
 - Remembers and restores custom window dimensions
@@ -49,10 +49,16 @@ uv run pyinstaller --clean --noconfirm pomodoro.spec
 ```
 Then run `dist/pomodoro.exe`.
 
+### macOS — Build standalone app bundle
+```bash
+uv run pyinstaller --clean --noconfirm pomodoro.spec
+```
+Then run `open dist/Pomodoro.app` (or double-click the bundle in Finder).
+
 ## Configuration
 Settings (`settings.json`) and session statistics (`history.json`) are stored in the user profile directory:
 - **Windows**: `%APPDATA%\pomodoro-timer\` (e.g., `C:\Users\<username>\AppData\Roaming\pomodoro-timer\`)
-- **Linux**: `~/.config/pomodoro-timer/`
+- **macOS & Linux**: `~/.config/pomodoro-timer/`
 
 ## Running tests
 ```bash
