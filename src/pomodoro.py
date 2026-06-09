@@ -1,10 +1,20 @@
+import sys
+
+if sys.platform == "darwin":
+    try:
+        from Foundation import NSBundle
+        bundle = NSBundle.mainBundle()
+        if bundle:
+            info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
+            if info:
+                info['CFBundleName'] = 'Pomodoro'
+                info['CFBundleDisplayName'] = 'Pomodoro'
+    except Exception:
+        pass
+
 import tkinter as tk
 import ttkbootstrap as tb
-from ttkbootstrap.constants import *
-import json
 import os
-import sys
-from pathlib import Path
 from datetime import datetime, date
 from storage import StorageManager
 from widgets import SashToggleButton
@@ -13,6 +23,7 @@ FONT_FAMILY = "Helvetica"
 
 
 def get_resource_path(filename):
+    """Gets the absolute path to a resource file, works for dev and for PyInstaller."""
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         base_path = sys._MEIPASS
     else:
@@ -21,6 +32,7 @@ def get_resource_path(filename):
 
 
 def apply_window_icon(window):
+    """Applies the application icon to the given Tkinter window."""
     icon_path = get_resource_path("stopwatch.ico")
     if os.path.exists(icon_path):
         try:
@@ -30,7 +42,10 @@ def apply_window_icon(window):
 
 
 class PomodoroApp:
+    """Main application class for the Pomodoro Timer."""
+
     def __init__(self, storage_manager, headless=False):
+        """Initializes the PomodoroApp with a storage manager and optional headless mode."""
         self.storage = storage_manager
         self.settings = self.storage.settings
         
@@ -157,14 +172,16 @@ class PomodoroApp:
             timer_controls_frame, text="Skip Break", command=self.skip_break, bootstyle="secondary", width=12
         )
 
+        max_icon = "⤢" if sys.platform == "darwin" else "⛶"
         self.maximize_btn = tb.Label(
-            self.timer_frame, text="⛶", cursor="hand2", font=(FONT_FAMILY, 18), bootstyle="info"
+            self.timer_frame, text=max_icon, cursor="hand2", font=(FONT_FAMILY, 18), bootstyle="info"
         )
         self.maximize_btn.bind("<Button-1>", lambda e: self.maximize_timer())
         self.minimize_btn = tb.Label(
             self.timer_frame, text="⤡", cursor="hand2", font=(FONT_FAMILY, 18), bootstyle="info"
         )
         self.minimize_btn.bind("<Button-1>", lambda e: self.minimize_timer())
+        self.maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
 
         # Todo UI layout
         self.editing_todo_ids = set()
@@ -253,15 +270,39 @@ class PomodoroApp:
         self.menu_bar = tk.Menu(self.root, tearoff=0)
         self.root.config(menu=self.menu_bar)
 
-        self.menu_bar.add_command(label="🔧", command=self.open_settings_dialog)
-        self.menu_bar.add_command(label="📋", command=self.toggle_todo_sidebar)
-        self.menu_bar.add_command(label="📊", command=self.open_report_dialog)
-        self.menu_bar.add_command(label="➕", command=increase_font)
-        self.menu_bar.add_command(label="➖", command=decrease_font)
+        if sys.platform == "darwin":
+            # On macOS, commands directly in the menu bar do not render.
+            # We must group each command in its own cascade.
+            settings_menu = tk.Menu(self.menu_bar, tearoff=0)
+            self.menu_bar.add_cascade(label="Settings", menu=settings_menu)
+            settings_menu.add_command(label="Open Settings", command=self.open_settings_dialog)
 
-        self.root.bind("<FocusIn>", self.on_focus_in)
-        self.root.bind("<FocusOut>", self.on_focus_out)
-        self.root.attributes("-alpha", self.settings["unfocus_transparency"])
+            todos_menu = tk.Menu(self.menu_bar, tearoff=0)
+            self.menu_bar.add_cascade(label="Todos", menu=todos_menu)
+            todos_menu.add_command(label="Toggle Todos", command=self.toggle_todo_sidebar)
+
+            report_menu = tk.Menu(self.menu_bar, tearoff=0)
+            self.menu_bar.add_cascade(label="Report", menu=report_menu)
+            report_menu.add_command(label="Open Report", command=self.open_report_dialog)
+
+            inc_font_menu = tk.Menu(self.menu_bar, tearoff=0)
+            self.menu_bar.add_cascade(label="Font +", menu=inc_font_menu)
+            inc_font_menu.add_command(label="Increase Font", command=increase_font)
+
+            dec_font_menu = tk.Menu(self.menu_bar, tearoff=0)
+            self.menu_bar.add_cascade(label="Font -", menu=dec_font_menu)
+            dec_font_menu.add_command(label="Decrease Font", command=decrease_font)
+        else:
+            self.menu_bar.add_command(label="Settings", command=self.open_settings_dialog)
+            self.menu_bar.add_command(label="Todos", command=self.toggle_todo_sidebar)
+            self.menu_bar.add_command(label="Report", command=self.open_report_dialog)
+            self.menu_bar.add_command(label="Font +", command=increase_font)
+            self.menu_bar.add_command(label="Font -", command=decrease_font)
+
+        if sys.platform != "darwin":
+            self.root.bind("<FocusIn>", self.on_focus_in)
+            self.root.bind("<FocusOut>", self.on_focus_out)
+            self.root.attributes("-alpha", self.settings["unfocus_transparency"])
 
         if self.settings.get("timer_mode") == "Stopwatch":
             self.set_mode("Stopwatch")
@@ -442,17 +483,17 @@ class PomodoroApp:
                 )
                 lbl.bind("<Double-1>", lambda e, tid=todo_id: self.start_edit(tid))
                 
-                def make_configure_handler(frame=item_frame, l=lbl):
+                def make_configure_handler(frame=item_frame, label_widget=lbl):
                     def handler(event):
                         if event.widget != frame:
                             return
                         lbl_width = max(50, event.width - 135)
                         try:
-                            current_wrap = int(l.cget("wraplength"))
+                            current_wrap = int(label_widget.cget("wraplength"))
                         except ValueError:
                             current_wrap = 0
                         if current_wrap != lbl_width:
-                            l.configure(wraplength=lbl_width)
+                            label_widget.configure(wraplength=lbl_width)
                     return handler
                     
                 item_frame.bind("<Configure>", make_configure_handler(item_frame, lbl))
@@ -511,18 +552,19 @@ class PomodoroApp:
             self.render_todos()
 
     def on_focus_in(self, event):
-        if event.widget == self.root:
+        if sys.platform != "darwin" and event.widget == self.root:
             self.root.wm_attributes("-alpha", 1.0)
 
     def on_focus_out(self, event):
-        if event.widget == self.root:
+        if sys.platform != "darwin" and event.widget == self.root:
             self.root.wm_attributes("-alpha", self.settings["unfocus_transparency"])
 
     def open_settings_dialog(self):
         settings_win = tb.Toplevel(self.root)
         apply_window_icon(settings_win)
         settings_win.title("Settings")
-        settings_win.geometry("320x460")
+        geom = "320x400" if sys.platform == "darwin" else "320x460"
+        settings_win.geometry(geom)
         settings_win.attributes("-topmost", True)
 
         def create_slider(parent, label_text, var, from_, to, is_float=False):
@@ -580,9 +622,10 @@ class PomodoroApp:
         ).pack(pady=10)
 
         trans_var = tk.DoubleVar(value=self.settings["unfocus_transparency"])
-        create_slider(
-            settings_win, "Unfocused Transparency:", trans_var, 0.1, 1.0, is_float=True
-        )
+        if sys.platform != "darwin":
+            create_slider(
+                settings_win, "Unfocused Transparency:", trans_var, 0.1, 1.0, is_float=True
+            )
 
         def save():
             try:
@@ -593,7 +636,8 @@ class PomodoroApp:
                 self.settings["sound_enabled"] = sound_var.get()
                 self.settings["unfocus_transparency"] = float(trans_var.get())
                 self.storage.save_settings()
-                self.root.attributes("-alpha", self.settings["unfocus_transparency"])
+                if sys.platform != "darwin":
+                    self.root.attributes("-alpha", self.settings["unfocus_transparency"])
                 if not self.timer_running:
                     if self.settings["timer_mode"] == "Stopwatch":
                         self.set_mode("Stopwatch")
@@ -895,14 +939,13 @@ class PomodoroApp:
                 except Exception:
                     pass
 
-            if self.timer_running:
-                self.start_btn.pack(pady=4)
-                try:
-                    self.maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
-                except NameError:
-                    pass
-            else:
-                self.start_btn.pack(pady=4)
+            self.start_btn.pack(pady=4)
+            if self.start_btn.cget("text") in ["Pause", "Continue"]:
+                self.stop_btn.pack(pady=4)
+            try:
+                self.maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
+            except NameError:
+                pass
         finally:
             self.root.after(100, self.reset_updating_layout)
 
