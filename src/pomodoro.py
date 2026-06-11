@@ -48,6 +48,16 @@ def apply_window_icon(window):
         except Exception:
             pass
 
+    # Windows handles the titlebar/taskbar icon more reliably with iconbitmap.
+    if sys.platform == "win32":
+        try:
+            ico_path = get_resource_path("stopwatch.ico")
+            if os.path.exists(ico_path):
+                window.iconbitmap(ico_path)
+        except Exception:
+            pass
+        return
+
     # 2. Window-level icon for title bar using iconphoto (cross-platform)
     try:
         # Try png first for high quality transparency

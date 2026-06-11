@@ -92,6 +92,8 @@ class FakeRoot:
         self.wm_attribute_calls = []
         self.config_calls = []
         self.geometry_calls = []
+        self.iconbitmap_calls = []
+        self.iconphoto_calls = []
         self.current_geom = current_geom
 
     def after(self, delay, callback):
@@ -120,6 +122,12 @@ class FakeRoot:
 
     def update_idletasks(self):
         pass
+
+    def iconbitmap(self, icon_path):
+        self.iconbitmap_calls.append(icon_path)
+
+    def iconphoto(self, *args):
+        self.iconphoto_calls.append(args)
 
 
 class FakeEntry(FakeWidget):
@@ -217,6 +225,26 @@ def test_get_resource_path_uses_meipass_when_frozen(tmp_path, monkeypatch):
     
     icon_path = pomodoro.get_resource_path("stopwatch.ico")
     assert icon_path == str(tmp_path / "stopwatch.ico")
+
+
+def test_apply_window_icon_uses_ico_on_windows(tmp_path, monkeypatch):
+    ico_path = tmp_path / "stopwatch.ico"
+    ico_path.write_bytes(b"fake")
+
+    window = FakeRoot()
+    monkeypatch.setattr(pomodoro.sys, "platform", "win32")
+    monkeypatch.setattr(pomodoro, "get_resource_path", lambda filename: str(ico_path) if filename == "stopwatch.ico" else str(tmp_path / filename))
+    monkeypatch.setattr(pomodoro.os.path, "exists", lambda path: path == str(ico_path))
+
+    def fail_photo(*args, **kwargs):
+        raise AssertionError("PNG icon path should not be used on Windows")
+
+    monkeypatch.setattr(pomodoro.tk, "PhotoImage", fail_photo)
+
+    pomodoro.apply_window_icon(window)
+
+    assert window.iconbitmap_calls == [str(ico_path)]
+    assert window.iconphoto_calls == []
 
 
 def test_set_mode_work_updates_labels_and_remaining_time(tmp_path):
