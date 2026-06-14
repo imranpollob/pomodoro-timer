@@ -17,7 +17,6 @@ import ttkbootstrap as tb
 import os
 from datetime import datetime, date
 from storage import StorageManager
-from widgets import SashToggleButton
 
 FONT_FAMILY = "Helvetica"
 
@@ -33,11 +32,9 @@ def get_resource_path(filename):
 
 def apply_window_icon(window):
     """Applies the application icon to the given Tkinter window."""
-    # 1. Platform-specific dock/app icon for macOS using AppKit
     if sys.platform == "darwin":
         try:
             from AppKit import NSApplication, NSImage
-            # Try png first, then icns, then ico
             for ext in ["png", "icns", "ico"]:
                 icon_path = get_resource_path(f"stopwatch.{ext}")
                 if os.path.exists(icon_path):
@@ -48,7 +45,6 @@ def apply_window_icon(window):
         except Exception:
             pass
 
-    # Windows handles the titlebar/taskbar icon more reliably with iconbitmap.
     if sys.platform == "win32":
         try:
             ico_path = get_resource_path("stopwatch.ico")
@@ -58,20 +54,16 @@ def apply_window_icon(window):
             pass
         return
 
-    # 2. Window-level icon for title bar using iconphoto (cross-platform)
     try:
-        # Try png first for high quality transparency
         png_path = get_resource_path("stopwatch.png")
         if os.path.exists(png_path):
             img = tk.PhotoImage(file=png_path)
             window.iconphoto(True, img)
-            # Keep a reference to prevent garbage collection
             window._icon_image = img
             return
     except Exception:
         pass
 
-    # Fallback to ico for Windows if png loading fails
     try:
         ico_path = get_resource_path("stopwatch.ico")
         if os.path.exists(ico_path):
@@ -87,7 +79,7 @@ class PomodoroApp:
         """Initializes the PomodoroApp with a storage manager and optional headless mode."""
         self.storage = storage_manager
         self.settings = self.storage.settings
-        
+
         # State variables
         self.current_mode = "Work"
         self.completed_pomodoros = 0
@@ -98,7 +90,7 @@ class PomodoroApp:
         self.is_maximized = False
         self.is_updating_layout = True
         self.editing_todo_ids = set()
-        
+
         # UI references to be initialized
         self.root = None
         self.mode_label = None
@@ -113,14 +105,11 @@ class PomodoroApp:
         self.minimize_btn = None
         self.menu_bar = None
         self.timer_frame = None
-        
-        self.main_container = None
-        self.todo_container = None
+
+        # Todo dialog UI references (set when dialog is open)
         self.todo_entry = None
         self.todo_list_frame = None
         self.todo_list_canvas = None
-        self.sash_toggle_btn = None
-        self.paned = None
 
         if not headless:
             self.create_ui()
@@ -129,14 +118,11 @@ class PomodoroApp:
         self.root = tb.Window(themename="superhero")
         apply_window_icon(self.root)
         self.root.title("Pomodoro")
-        
+
         style = tb.Style()
         style.configure('Info.Link.TButton', anchor='e')
         style.configure('Danger.Link.TButton', anchor='w')
-        
-        # Force todo list to be invisible at startup
-        self.settings["todo_sidebar_visible"] = False
-        
+
         if self.settings.get("is_maximized_state", False):
             width = self.settings.get("maximized_window_width", 240)
             height = self.settings.get("maximized_window_height", 80)
@@ -146,25 +132,9 @@ class PomodoroApp:
         self.root.geometry(f"{width}x{height}")
         self.root.attributes("-topmost", True)
 
-        self.paned = tb.Panedwindow(self.root, orient="horizontal")
-        self.paned.pack(fill="both", expand=True)
-
-        self.main_container = tb.Frame(self.paned)
-        self.paned.add(self.main_container, weight=0)
-
-        # Left pane layout: timer_controls_frame for standard centered controls, sash_toggle_btn on the right edge
-        timer_controls_frame = tb.Frame(self.main_container)
-        timer_controls_frame.pack(side="left", fill="both", expand=True)
-
-        self.sash_toggle_btn = SashToggleButton(
-            self.main_container,
-            command=self.toggle_todo_sidebar
-        )
-        self.sash_toggle_btn.pack(side="right", fill="y")
-
         # Mode frame selection
         self.mode_var = tk.StringVar(value=self.settings.get("timer_mode", "Pomodoro"))
-        self.mode_frame = tb.Frame(timer_controls_frame)
+        self.mode_frame = tb.Frame(self.root)
         self.mode_frame.pack(pady=(12, 0))
 
         def on_mode_change(*args):
@@ -185,10 +155,10 @@ class PomodoroApp:
             self.mode_frame, text="Stopwatch", variable=self.mode_var, value="Stopwatch"
         ).pack(side="left", padx=5)
 
-        self.mode_label = tb.Label(timer_controls_frame, text="", font=(FONT_FAMILY, 12, "bold"))
+        self.mode_label = tb.Label(self.root, text="", font=(FONT_FAMILY, 12, "bold"))
         self.mode_label.pack(pady=(8, 0))
 
-        self.timer_frame = tb.Frame(timer_controls_frame)
+        self.timer_frame = tb.Frame(self.root)
         self.timer_frame.pack(pady=0)
 
         self.timer_label = tb.Label(
@@ -197,18 +167,18 @@ class PomodoroApp:
         self.timer_label.pack(side="left")
 
         self.start_btn = tb.Button(
-            timer_controls_frame, text="Start", command=self.start_pomodoro, bootstyle="primary", width=12
+            self.root, text="Start", command=self.start_pomodoro, bootstyle="primary", width=12
         )
         self.start_btn.pack(pady=4)
 
         self.continue_btn = tb.Button(
-            timer_controls_frame, text="Continue", command=self.continue_pomodoro, bootstyle="success", width=12
+            self.root, text="Continue", command=self.continue_pomodoro, bootstyle="success", width=12
         )
         self.stop_btn = tb.Button(
-            timer_controls_frame, text="Stop", command=self.stop_pomodoro, bootstyle="danger", width=12
+            self.root, text="Stop", command=self.stop_pomodoro, bootstyle="danger", width=12
         )
         self.skip_btn = tb.Button(
-            timer_controls_frame, text="Skip Break", command=self.skip_break, bootstyle="secondary", width=12
+            self.root, text="Skip Break", command=self.skip_break, bootstyle="secondary", width=12
         )
 
         max_icon = "⤢" if sys.platform == "darwin" else "⛶"
@@ -221,80 +191,6 @@ class PomodoroApp:
         )
         self.minimize_btn.bind("<Button-1>", lambda e: self.minimize_timer())
         self.maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
-
-        # Todo UI layout
-        self.editing_todo_ids = set()
-        self.todo_container = tb.Frame(self.paned)
-        self.todo_container.bind("<Configure>", self.on_pane_configure)
-        self.main_container.bind("<Configure>", self.on_pane_configure)
-        
-        todo_title = tb.Label(self.todo_container, text="Todos", font=(FONT_FAMILY, 12, "bold"), bootstyle="primary")
-        todo_title.pack(anchor="w", pady=(5, 5), padx=5)
-        
-        input_frame = tb.Frame(self.todo_container)
-        input_frame.pack(fill="x", pady=2, padx=5)
-        
-        self.todo_entry = tb.Entry(input_frame, font=(FONT_FAMILY, 10), bootstyle="secondary")
-        self.todo_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        self.todo_entry.bind("<Return>", lambda e: self.add_todo_item())
-        
-        add_btn = tb.Button(input_frame, text="Add", command=self.add_todo_item, bootstyle="info", width=5)
-        add_btn.pack(side="right")
-        
-        list_container = tb.Frame(self.todo_container)
-        list_container.pack(fill="both", expand=True, pady=5)
-        
-        bg_color = tb.Style().colors.bg
-        self.todo_list_canvas = tk.Canvas(list_container, borderwidth=0, highlightthickness=0, bg=bg_color)
-        todo_scrollbar = tb.Scrollbar(list_container, orient="vertical", command=self.todo_list_canvas.yview)
-        
-        self.todo_list_frame = tb.Frame(self.todo_list_canvas)
-        canvas_window = self.todo_list_canvas.create_window((0, 0), window=self.todo_list_frame, anchor="nw", width=220)
-        
-        def on_canvas_configure(event):
-            self.todo_list_canvas.itemconfig(canvas_window, width=event.width)
-            
-        self.todo_list_canvas.bind("<Configure>", on_canvas_configure)
-        
-        self.todo_list_frame.bind(
-            "<Configure>",
-            lambda e: self.todo_list_canvas.configure(
-                scrollregion=self.todo_list_canvas.bbox("all")
-            )
-        )
-        
-        self.todo_list_canvas.configure(yscrollcommand=todo_scrollbar.set)
-        self.todo_list_canvas.pack(side="left", fill="both", expand=True)
-        todo_scrollbar.pack(side="right", fill="y")
-        
-        def _on_mousewheel(event):
-            if sys.platform == "win32":
-                self.todo_list_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-            elif sys.platform == "darwin":
-                self.todo_list_canvas.yview_scroll(int(-1 * event.delta), "units")
-            else:
-                if event.num == 4:
-                    self.todo_list_canvas.yview_scroll(-1, "units")
-                elif event.num == 5:
-                    self.todo_list_canvas.yview_scroll(1, "units")
-                    
-        def bind_mousewheel(event):
-            self.todo_list_canvas.bind_all("<MouseWheel>", _on_mousewheel)
-            if sys.platform == "linux":
-                self.todo_list_canvas.bind_all("<Button-4>", _on_mousewheel)
-                self.todo_list_canvas.bind_all("<Button-5>", _on_mousewheel)
-
-        def unbind_mousewheel(event):
-            self.todo_list_canvas.unbind_all("<MouseWheel>")
-            if sys.platform == "linux":
-                self.todo_list_canvas.unbind_all("<Button-4>")
-                self.todo_list_canvas.unbind_all("<Button-5>")
-
-        self.todo_list_canvas.bind("<Enter>", bind_mousewheel)
-        self.todo_list_canvas.bind("<Leave>", unbind_mousewheel)
-        
-        self.render_todos()
-        self.update_todo_layout()
 
         def increase_font():
             self.settings["label_font_size"] = min(self.settings["label_font_size"] + 2, 72)
@@ -310,15 +206,13 @@ class PomodoroApp:
         self.root.config(menu=self.menu_bar)
 
         if sys.platform == "darwin":
-            # On macOS, commands directly in the menu bar do not render.
-            # We must group each command in its own cascade.
             settings_menu = tk.Menu(self.menu_bar, tearoff=0)
             self.menu_bar.add_cascade(label="Settings", menu=settings_menu)
             settings_menu.add_command(label="Open Settings", command=self.open_settings_dialog)
 
             todos_menu = tk.Menu(self.menu_bar, tearoff=0)
             self.menu_bar.add_cascade(label="Todos", menu=todos_menu)
-            todos_menu.add_command(label="Toggle Todos", command=self.toggle_todo_sidebar)
+            todos_menu.add_command(label="Open Todos", command=self.open_todos_dialog)
 
             report_menu = tk.Menu(self.menu_bar, tearoff=0)
             self.menu_bar.add_cascade(label="Report", menu=report_menu)
@@ -333,7 +227,7 @@ class PomodoroApp:
             dec_font_menu.add_command(label="Decrease Font", command=decrease_font)
         else:
             self.menu_bar.add_command(label="Settings", command=self.open_settings_dialog)
-            self.menu_bar.add_command(label="Todos", command=self.toggle_todo_sidebar)
+            self.menu_bar.add_command(label="Todos", command=self.open_todos_dialog)
             self.menu_bar.add_command(label="Report", command=self.open_report_dialog)
             self.menu_bar.add_command(label="Font +", command=increase_font)
             self.menu_bar.add_command(label="Font -", command=decrease_font)
@@ -361,8 +255,7 @@ class PomodoroApp:
                     self.settings["maximized_window_width"] = w
                     self.settings["maximized_window_height"] = h
                 else:
-                    if not self.settings.get("todo_sidebar_visible", False):
-                        self.settings["window_width"] = w
+                    self.settings["window_width"] = w
                     self.settings["window_height"] = h
                 self.storage.save_settings()
             except Exception as e:
@@ -375,98 +268,92 @@ class PomodoroApp:
     def reset_updating_layout(self):
         self.is_updating_layout = False
 
-    def on_pane_configure(self, event):
-        if self.is_updating_layout:
-            return
-        if self.settings.get("todo_sidebar_visible", False) and not self.is_maximized:
-            try:
-                if self.todo_container is not None and str(event.widget) == str(self.todo_container):
-                    w_todo = self.todo_container.winfo_width()
-                    if w_todo > 10:
-                        self.settings["todo_sidebar_width"] = w_todo
-                if self.main_container is not None and str(event.widget) == str(self.main_container):
-                    w_main = self.main_container.winfo_width()
-                    if w_main > 10:
-                        self.settings["window_width"] = w_main
-            except Exception:
-                pass
+    def open_todos_dialog(self):
+        todos_win = tb.Toplevel(self.root)
+        apply_window_icon(todos_win)
+        todos_win.title("Todos")
+        todos_win.geometry("300x400")
+        todos_win.attributes("-topmost", True)
 
-    def toggle_todo_sidebar(self):
-        visible = not self.settings.get("todo_sidebar_visible", False)
-        self.settings["todo_sidebar_visible"] = visible
-        self.storage.save_settings()
-        self.update_todo_layout()
+        todo_title = tb.Label(todos_win, text="Todos", font=(FONT_FAMILY, 12, "bold"), bootstyle="primary")
+        todo_title.pack(anchor="w", pady=(5, 5), padx=5)
 
-    def update_todo_layout(self):
-        self.is_updating_layout = True
-        try:
-            if self.is_maximized:
-                if self.todo_container is not None and self.paned is not None:
-                    try:
-                        self.paned.forget(self.todo_container)
-                    except Exception:
-                        pass
-                return
+        input_frame = tb.Frame(todos_win)
+        input_frame.pack(fill="x", pady=2, padx=5)
 
-            visible = self.settings.get("todo_sidebar_visible", False)
-            geom = self.root.geometry()
-            size_pos = geom.split("+")
-            size = size_pos[0]
-            w, h = map(int, size.split("x"))
-            
-            sidebar_w = self.settings.get("todo_sidebar_width", 250)
-            
-            if visible:
-                if self.paned is not None and str(self.todo_container) not in self.paned.panes():
-                    self.paned.add(self.todo_container, weight=1)
-                self.sash_toggle_btn.config(text="Hide Todos".upper())
-                if w < 400:
-                    new_w = w + sidebar_w
-                    if len(size_pos) > 1:
-                        x, y = size_pos[1], size_pos[2]
-                        self.root.geometry(f"{new_w}x{h}+{x}+{y}")
-                    else:
-                        self.root.geometry(f"{new_w}x{h}")
-                    
-                    self.root.update_idletasks()
-                    try:
-                        self.paned.sashpos(0, w)
-                    except Exception:
-                        pass
-                else:
-                    self.root.update_idletasks()
-                    try:
-                        self.paned.sashpos(0, self.settings.get("window_width", 290))
-                    except Exception:
-                        pass
+        self.todo_entry = tb.Entry(input_frame, font=(FONT_FAMILY, 10), bootstyle="secondary")
+        self.todo_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.todo_entry.bind("<Return>", lambda e: self.add_todo_item())
+
+        add_btn = tb.Button(input_frame, text="Add", command=self.add_todo_item, bootstyle="info", width=5)
+        add_btn.pack(side="right")
+
+        list_container = tb.Frame(todos_win)
+        list_container.pack(fill="both", expand=True, pady=5)
+
+        bg_color = tb.Style().colors.bg
+        self.todo_list_canvas = tk.Canvas(list_container, borderwidth=0, highlightthickness=0, bg=bg_color)
+        todo_scrollbar = tb.Scrollbar(list_container, orient="vertical", command=self.todo_list_canvas.yview)
+
+        self.todo_list_frame = tb.Frame(self.todo_list_canvas)
+        canvas_window = self.todo_list_canvas.create_window((0, 0), window=self.todo_list_frame, anchor="nw", width=260)
+
+        def on_canvas_configure(event):
+            self.todo_list_canvas.itemconfig(canvas_window, width=event.width)
+
+        self.todo_list_canvas.bind("<Configure>", on_canvas_configure)
+
+        self.todo_list_frame.bind(
+            "<Configure>",
+            lambda e: self.todo_list_canvas.configure(
+                scrollregion=self.todo_list_canvas.bbox("all")
+            )
+        )
+
+        self.todo_list_canvas.configure(yscrollcommand=todo_scrollbar.set)
+        self.todo_list_canvas.pack(side="left", fill="both", expand=True)
+        todo_scrollbar.pack(side="right", fill="y")
+
+        def _on_mousewheel(event):
+            if sys.platform == "win32":
+                self.todo_list_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            elif sys.platform == "darwin":
+                self.todo_list_canvas.yview_scroll(int(-1 * event.delta), "units")
             else:
-                if self.paned is not None:
-                    try:
-                        self.paned.forget(self.todo_container)
-                    except Exception:
-                        pass
-                self.sash_toggle_btn.config(text="Show Todos".upper())
-                if w >= 400:
-                    new_w = w - sidebar_w
-                    if len(size_pos) > 1:
-                        x, y = size_pos[1], size_pos[2]
-                        self.root.geometry(f"{new_w}x{h}+{x}+{y}")
-                    else:
-                        self.root.geometry(f"{new_w}x{h}")
-        finally:
-            self.root.after(100, self.reset_updating_layout)
+                if event.num == 4:
+                    self.todo_list_canvas.yview_scroll(-1, "units")
+                elif event.num == 5:
+                    self.todo_list_canvas.yview_scroll(1, "units")
+
+        def bind_mousewheel(event):
+            self.todo_list_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            if sys.platform == "linux":
+                self.todo_list_canvas.bind_all("<Button-4>", _on_mousewheel)
+                self.todo_list_canvas.bind_all("<Button-5>", _on_mousewheel)
+
+        def unbind_mousewheel(event):
+            self.todo_list_canvas.unbind_all("<MouseWheel>")
+            if sys.platform == "linux":
+                self.todo_list_canvas.unbind_all("<Button-4>")
+                self.todo_list_canvas.unbind_all("<Button-5>")
+
+        self.todo_list_canvas.bind("<Enter>", bind_mousewheel)
+        self.todo_list_canvas.bind("<Leave>", unbind_mousewheel)
+
+        self.render_todos()
+        self.todo_entry.focus_set()
 
     def render_todos(self):
         if self.todo_list_frame is None:
             return
-            
+
         for widget in self.todo_list_frame.winfo_children():
             widget.destroy()
-            
+
         for todo in self.storage.todos:
             item_frame = tb.Frame(self.todo_list_frame)
             item_frame.pack(fill="x", pady=4, padx=5)
-            
+
             todo_id = todo["id"]
             if todo_id in self.editing_todo_ids:
                 edit_var = tk.StringVar(value=todo["text"])
@@ -476,7 +363,7 @@ class PomodoroApp:
                     font=(FONT_FAMILY, 10),
                     bootstyle="info",
                 )
-                
+
                 def save_edit(event=None, t=todo, var=edit_var):
                     new_text = var.get().strip()
                     if new_text:
@@ -484,9 +371,9 @@ class PomodoroApp:
                         self.storage.save_todos()
                     self.editing_todo_ids.discard(t["id"])
                     self.render_todos()
-                    
+
                 edit_entry.bind("<Return>", save_edit)
-                
+
                 save_btn = tb.Button(
                     item_frame,
                     text="✔",
@@ -507,10 +394,10 @@ class PomodoroApp:
                     bootstyle="success",
                     command=lambda t=todo, v=var: self.toggle_todo_status(t, v.get())
                 )
-                
+
                 fg_color = "gray" if todo["done"] else "white"
                 font_style = (FONT_FAMILY, 10, "overstrike") if todo["done"] else (FONT_FAMILY, 10)
-                
+
                 lbl = tb.Label(
                     item_frame,
                     text=todo["text"],
@@ -521,7 +408,7 @@ class PomodoroApp:
                     wraplength=140
                 )
                 lbl.bind("<Double-1>", lambda e, tid=todo_id: self.start_edit(tid))
-                
+
                 def make_configure_handler(frame=item_frame, label_widget=lbl):
                     def handler(event):
                         if event.widget != frame:
@@ -534,9 +421,9 @@ class PomodoroApp:
                         if current_wrap != lbl_width:
                             label_widget.configure(wraplength=lbl_width)
                     return handler
-                    
+
                 item_frame.bind("<Configure>", make_configure_handler(item_frame, lbl))
-                
+
                 edit_btn = tb.Button(
                     item_frame,
                     text="🖋️",
@@ -544,7 +431,7 @@ class PomodoroApp:
                     width=3,
                     command=lambda tid=todo_id: self.start_edit(tid)
                 )
-                
+
                 del_btn = tb.Button(
                     item_frame,
                     text="❌",
@@ -552,17 +439,18 @@ class PomodoroApp:
                     width=3,
                     command=lambda t=todo: self.delete_todo_item(t)
                 )
-                
-                # Pack order: pack side="right" buttons first, then side="left" widgets
+
                 del_btn.pack(side="right", padx=0)
                 edit_btn.pack(side="right", padx=0)
                 cb.pack(side="left", padx=1)
                 lbl.pack(side="left", fill="x", expand=True, padx=1)
-                
+
         self.todo_list_frame.update_idletasks()
         self.todo_list_canvas.configure(scrollregion=self.todo_list_canvas.bbox("all"))
 
     def add_todo_item(self):
+        if self.todo_entry is None:
+            return
         text = self.todo_entry.get().strip()
         if text:
             todo_id = int(datetime.now().timestamp() * 1000)
@@ -687,7 +575,7 @@ class PomodoroApp:
                             self.set_mode(self.current_mode)
                 settings_win.destroy()
             except ValueError:
-                pass  # Ignore invalid inputs
+                pass
 
         def reset_stats():
             from tkinter import messagebox
@@ -740,15 +628,14 @@ class PomodoroApp:
             self.mode_label.config(text=mode, bootstyle="secondary")
             self.skip_btn.pack_forget()
             self.stop_btn.pack_forget()
-            
+
         minutes, seconds = divmod(self.pomodoro_time, 60)
         self.timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
 
     def start_pomodoro(self):
         self.timer_running = True
         self.start_btn.pack_forget()
-        
-        # Disable mode buttons during timer execution
+
         for child in self.mode_frame.winfo_children():
             child.configure(state="disabled")
 
@@ -780,7 +667,7 @@ class PomodoroApp:
             elapsed = (datetime.now() - self.stopwatch_start_time).total_seconds()
             self.stopwatch_accumulated_seconds += elapsed
             self.stopwatch_start_time = None
-            
+
         self.start_btn.config(
             text="Continue", command=self.continue_pomodoro, bootstyle="success"
         )
@@ -789,7 +676,7 @@ class PomodoroApp:
         self.timer_running = True
         if self.current_mode == "Stopwatch":
             self.stopwatch_start_time = datetime.now()
-            
+
         self.start_btn.config(
             text="Pause", command=self.pause_pomodoro, bootstyle="warning"
         )
@@ -819,7 +706,7 @@ class PomodoroApp:
         self.start_btn.pack(pady=4)
         self.continue_btn.pack_forget()
         self.stop_btn.pack_forget()
-        
+
         if self.current_mode in ["Short Break", "Long Break"]:
             self.skip_btn.pack_forget()
             self.set_mode("Work")
@@ -907,8 +794,7 @@ class PomodoroApp:
                     geom = self.root.geometry()
                     size = geom.split("+")[0]
                     w, h = map(int, size.split("x"))
-                    w_base = w - self.settings.get("todo_sidebar_width", 250) if self.settings.get("todo_sidebar_visible", False) else w
-                    self.settings["window_width"] = w_base
+                    self.settings["window_width"] = w
                     self.settings["window_height"] = h
                     self.storage.save_settings()
                 except Exception as e:
@@ -929,16 +815,6 @@ class PomodoroApp:
                 self.maximize_btn.pack_forget()
             except NameError:
                 pass
-            if self.todo_container is not None and self.paned is not None:
-                try:
-                    self.paned.forget(self.todo_container)
-                except Exception:
-                    pass
-            if self.sash_toggle_btn is not None:
-                try:
-                    self.sash_toggle_btn.pack_forget()
-                except Exception:
-                    pass
 
             self.root.config(menu="")
 
@@ -973,8 +849,6 @@ class PomodoroApp:
             self.root.config(menu=self.menu_bar)
 
             width = self.settings.get("window_width", 290)
-            if self.settings.get("todo_sidebar_visible", False):
-                width += self.settings.get("todo_sidebar_width", 250)
             height = self.settings.get("window_height", 290)
             self.root.geometry(f"{width}x{height}")
 
@@ -983,21 +857,6 @@ class PomodoroApp:
 
             self.mode_frame.pack(pady=(12, 0))
             self.mode_label.pack(pady=(8, 0))
-
-            if self.settings.get("todo_sidebar_visible", False) and self.paned is not None:
-                if str(self.todo_container) not in self.paned.panes():
-                    self.paned.add(self.todo_container, weight=1)
-                self.root.update_idletasks()
-                try:
-                    self.paned.sashpos(0, self.settings.get("window_width", 290))
-                except Exception:
-                    pass
-
-            if self.sash_toggle_btn is not None:
-                try:
-                    self.sash_toggle_btn.pack(side="right", fill="y")
-                except Exception:
-                    pass
 
             self.start_btn.pack(pady=4)
             if self.current_mode in ["Short Break", "Long Break"]:
