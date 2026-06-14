@@ -24,7 +24,6 @@ DEFAULT_SETTINGS = {
     "window_height": 290,
     "maximized_window_width": 240,
     "maximized_window_height": 80,
-    "is_maximized_state": False,
     "todo_sidebar_visible": False,
     "todo_sidebar_width": 250,
 }

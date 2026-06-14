@@ -123,12 +123,8 @@ class PomodoroApp:
         style.configure('Info.Link.TButton', anchor='e')
         style.configure('Danger.Link.TButton', anchor='w')
 
-        if self.settings.get("is_maximized_state", False):
-            width = self.settings.get("maximized_window_width", 240)
-            height = self.settings.get("maximized_window_height", 80)
-        else:
-            width = self.settings.get("window_width", 290)
-            height = self.settings.get("window_height", 290)
+        width = self.settings.get("window_width", 290)
+        height = self.settings.get("window_height", 290)
         self.root.geometry(f"{width}x{height}")
         self.root.attributes("-topmost", True)
 
@@ -242,19 +238,12 @@ class PomodoroApp:
         else:
             self.set_mode("Work")
 
-        if self.settings.get("is_maximized_state", False):
-            self.maximize_timer()
-
         def on_close():
             try:
-                self.settings["is_maximized_state"] = self.is_maximized
                 geom = self.root.geometry()
                 size = geom.split("+")[0]
                 w, h = map(int, size.split("x"))
-                if self.is_maximized:
-                    self.settings["maximized_window_width"] = w
-                    self.settings["maximized_window_height"] = h
-                else:
+                if not self.is_maximized:
                     self.settings["window_width"] = w
                     self.settings["window_height"] = h
                 self.storage.save_settings()
