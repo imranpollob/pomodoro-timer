@@ -119,10 +119,6 @@ class PomodoroApp:
         apply_window_icon(self.root)
         self.root.title("Pomodoro")
 
-        style = tb.Style()
-        style.configure('Info.Link.TButton', anchor='e')
-        style.configure('Danger.Link.TButton', anchor='w')
-
         width = self.settings.get("window_width", 290)
         height = self.settings.get("window_height", 290)
         self.root.geometry(f"{width}x{height}")
