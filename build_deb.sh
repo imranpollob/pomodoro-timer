@@ -11,10 +11,12 @@ rm -rf deb_workspace
 mkdir -p deb_workspace/DEBIAN
 mkdir -p deb_workspace/usr/bin
 mkdir -p deb_workspace/usr/share/applications
+mkdir -p deb_workspace/usr/share/icons/hicolor/48x48/apps
 
 cp dist/pomodoro                              deb_workspace/usr/bin/
 cp linux_packaging/pomodoro.desktop          deb_workspace/usr/share/applications/
 cp linux_packaging/control                   deb_workspace/DEBIAN/
+cp linux_packaging/icons/pomodoro.png        deb_workspace/usr/share/icons/hicolor/48x48/apps/pomodoro.png
 
 echo "==> Building .deb package..."
 dpkg-deb --build deb_workspace "${PKG_NAME}.deb"
