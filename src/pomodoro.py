@@ -755,6 +755,7 @@ class PomodoroApp:
                 print(f"Error saving window size: {e}")
 
         self.is_maximized = True
+        self.root.config(menu="")
 
         self.mode_frame.pack_forget()
         self.mode_label.pack_forget()
