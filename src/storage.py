@@ -37,9 +37,20 @@ class StorageManager:
         
         self.settings = DEFAULT_SETTINGS.copy()
         self.todos = []
+        self._drive_sync = None
         
         self.load_settings()
         self.load_todos()
+
+    def set_drive_sync(self, drive_sync):
+        """Set the Google Drive sync manager."""
+        self._drive_sync = drive_sync
+
+    def _trigger_sync(self):
+        """Trigger a background sync if drive sync is connected."""
+        if self._drive_sync and self._drive_sync.is_connected:
+            data = self.get_all_data()
+            self._drive_sync.queue_sync(data)
 
     def load_settings(self):
         """Loads settings from the settings file."""
@@ -56,6 +67,7 @@ class StorageManager:
         try:
             with open(self.settings_file, "w") as f:
                 json.dump(self.settings, f, indent=4)
+            self._trigger_sync()
         except Exception as e:
             print(f"Error saving settings: {e}")
 
@@ -76,6 +88,7 @@ class StorageManager:
         try:
             with open(self.todos_file, "w") as f:
                 json.dump(self.todos, f, indent=4)
+            self._trigger_sync()
         except Exception as e:
             print(f"Error saving todos: {e}")
 
@@ -103,6 +116,7 @@ class StorageManager:
         try:
             with open(self.history_file, "w") as f:
                 json.dump(history, f, indent=4)
+            self._trigger_sync()
         except Exception as e:
             print(f"Error saving history: {e}")
 
@@ -114,7 +128,46 @@ class StorageManager:
         try:
             with open(self.history_file, "w") as f:
                 json.dump(new_history, f, indent=4)
+            self._trigger_sync()
             return True
         except Exception as e:
             print(f"Error resetting history: {e}")
+            return False
+
+    def get_all_data(self):
+        """Consolidate all data into a single dict for sync."""
+        return {
+            "settings": self.settings.copy(),
+            "todos": list(self.todos),
+            "history": self.load_history(),
+            "metadata": {
+                "last_modified": datetime.now().isoformat(),
+                "device_id": "",
+                "sync_version": 0,
+            },
+        }
+
+    def load_all_data(self, data):
+        """Restore settings, todos, and history from consolidated data."""
+        if not data:
+            return False
+
+        try:
+            if "settings" in data:
+                self.settings.update(data["settings"])
+                with open(self.settings_file, "w") as f:
+                    json.dump(self.settings, f, indent=4)
+
+            if "todos" in data:
+                self.todos = data["todos"]
+                with open(self.todos_file, "w") as f:
+                    json.dump(self.todos, f, indent=4)
+
+            if "history" in data:
+                with open(self.history_file, "w") as f:
+                    json.dump(data["history"], f, indent=4)
+
+            return True
+        except Exception as e:
+            print(f"Error loading all data: {e}")
             return False
