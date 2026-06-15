@@ -155,7 +155,6 @@ def get_test_app(tmp_path):
     app.timer_label = FakeWidget()
     app.timer_frame = FakeWidget()
     app.start_btn = FakeWidget()
-    app.continue_btn = FakeWidget()
     app.stop_btn = FakeWidget()
     app.skip_btn = FakeWidget()
     app.maximize_btn = FakeWidget()
@@ -425,7 +424,6 @@ def test_skip_break_moves_to_work_mode(tmp_path, monkeypatch):
     app.skip_break()
 
     assert app.timer_running is False
-    assert app.continue_btn.pack_forget_calls == 1
     assert app.stop_btn.pack_forget_calls == 1
     assert app.skip_btn.pack_forget_calls == 1
     assert modes == ["Work"]
@@ -477,7 +475,6 @@ def test_maximize_timer_hides_controls(tmp_path):
     assert app.start_btn.pack_forget_calls == 1
     assert app.maximize_btn.pack_forget_calls == 1
 
-    assert app.root.config_calls[-1] == {"menu": ""}
     assert app.root.geometry_calls[-1] == "240x80"
 
     assert app.timer_frame.pack_forget_calls == 1

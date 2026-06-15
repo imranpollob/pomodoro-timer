@@ -22,7 +22,6 @@ FONT_FAMILY = "Helvetica"
 
 
 def get_resource_path(filename):
-    """Gets the absolute path to a resource file, works for dev and for PyInstaller."""
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         base_path = sys._MEIPASS
     else:
@@ -31,7 +30,6 @@ def get_resource_path(filename):
 
 
 def apply_window_icon(window):
-    """Applies the application icon to the given Tkinter window."""
     if sys.platform == "darwin":
         try:
             from AppKit import NSApplication, NSImage
@@ -73,14 +71,11 @@ def apply_window_icon(window):
 
 
 class PomodoroApp:
-    """Main application class for the Pomodoro Timer."""
 
     def __init__(self, storage_manager, headless=False):
-        """Initializes the PomodoroApp with a storage manager and optional headless mode."""
         self.storage = storage_manager
         self.settings = self.storage.settings
 
-        # State variables
         self.current_mode = "Work"
         self.completed_pomodoros = 0
         self.timer_running = False
@@ -88,15 +83,12 @@ class PomodoroApp:
         self.stopwatch_start_time = None
         self.stopwatch_accumulated_seconds = 0
         self.is_maximized = False
-        self.is_updating_layout = True
         self.editing_todo_ids = set()
 
-        # UI references to be initialized
         self.root = None
         self.mode_label = None
         self.timer_label = None
         self.start_btn = None
-        self.continue_btn = None
         self.stop_btn = None
         self.skip_btn = None
         self.mode_frame = None
@@ -106,7 +98,6 @@ class PomodoroApp:
         self.menu_bar = None
         self.timer_frame = None
 
-        # Todo dialog UI references (set when dialog is open)
         self.todo_entry = None
         self.todo_list_frame = None
         self.todo_list_canvas = None
@@ -124,7 +115,6 @@ class PomodoroApp:
         self.root.geometry(f"{width}x{height}")
         self.root.attributes("-topmost", True)
 
-        # Mode frame selection
         self.mode_var = tk.StringVar(value=self.settings.get("timer_mode", "Pomodoro"))
         self.mode_frame = tb.Frame(self.root)
         self.mode_frame.pack(pady=(12, 0))
@@ -163,9 +153,6 @@ class PomodoroApp:
         )
         self.start_btn.pack(pady=4)
 
-        self.continue_btn = tb.Button(
-            self.root, text="Continue", command=self.continue_pomodoro, bootstyle="success", width=12
-        )
         self.stop_btn = tb.Button(
             self.root, text="Stop", command=self.stop_pomodoro, bootstyle="danger", width=12
         )
@@ -184,45 +171,7 @@ class PomodoroApp:
         self.minimize_btn.bind("<Button-1>", lambda e: self.minimize_timer())
         self.maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
 
-        def increase_font():
-            self.settings["label_font_size"] = min(self.settings["label_font_size"] + 2, 72)
-            self.timer_label.configure(font=(FONT_FAMILY, self.settings["label_font_size"], "bold"))
-            self.storage.save_settings()
-
-        def decrease_font():
-            self.settings["label_font_size"] = max(self.settings["label_font_size"] - 2, 8)
-            self.timer_label.configure(font=(FONT_FAMILY, self.settings["label_font_size"], "bold"))
-            self.storage.save_settings()
-
-        self.menu_bar = tk.Menu(self.root, tearoff=0)
-        self.root.config(menu=self.menu_bar)
-
-        if sys.platform == "darwin":
-            settings_menu = tk.Menu(self.menu_bar, tearoff=0)
-            self.menu_bar.add_cascade(label="Settings", menu=settings_menu)
-            settings_menu.add_command(label="Open Settings", command=self.open_settings_dialog)
-
-            todos_menu = tk.Menu(self.menu_bar, tearoff=0)
-            self.menu_bar.add_cascade(label="Todos", menu=todos_menu)
-            todos_menu.add_command(label="Open Todos", command=self.open_todos_dialog)
-
-            report_menu = tk.Menu(self.menu_bar, tearoff=0)
-            self.menu_bar.add_cascade(label="Report", menu=report_menu)
-            report_menu.add_command(label="Open Report", command=self.open_report_dialog)
-
-            inc_font_menu = tk.Menu(self.menu_bar, tearoff=0)
-            self.menu_bar.add_cascade(label="Font +", menu=inc_font_menu)
-            inc_font_menu.add_command(label="Increase Font", command=increase_font)
-
-            dec_font_menu = tk.Menu(self.menu_bar, tearoff=0)
-            self.menu_bar.add_cascade(label="Font -", menu=dec_font_menu)
-            dec_font_menu.add_command(label="Decrease Font", command=decrease_font)
-        else:
-            self.menu_bar.add_command(label="Settings", command=self.open_settings_dialog)
-            self.menu_bar.add_command(label="Todos", command=self.open_todos_dialog)
-            self.menu_bar.add_command(label="Report", command=self.open_report_dialog)
-            self.menu_bar.add_command(label="Font +", command=increase_font)
-            self.menu_bar.add_command(label="Font -", command=decrease_font)
+        self.menu_bar = self.build_menu(self.root)
 
         if sys.platform != "darwin":
             self.root.bind("<FocusIn>", self.on_focus_in)
@@ -248,10 +197,38 @@ class PomodoroApp:
             self.root.destroy()
 
         self.root.protocol("WM_DELETE_WINDOW", on_close)
-        self.root.after(150, self.reset_updating_layout)
 
-    def reset_updating_layout(self):
-        self.is_updating_layout = False
+    def build_menu(self, window, exclude=None):
+        exclude = exclude or set()
+        all_items = [
+            ("Settings", self.open_settings_dialog),
+            ("Todos",    self.open_todos_dialog),
+            ("Report",   self.open_report_dialog),
+            ("Font +",   self.increase_font),
+            ("Font -",   self.decrease_font),
+        ]
+        menu_bar = tk.Menu(window, tearoff=0)
+        window.config(menu=menu_bar)
+        for label, cmd in all_items:
+            if label in exclude:
+                continue
+            if sys.platform == "darwin":
+                sub = tk.Menu(menu_bar, tearoff=0)
+                menu_bar.add_cascade(label=label, menu=sub)
+                sub.add_command(label=label, command=cmd)
+            else:
+                menu_bar.add_command(label=label, command=cmd)
+        return menu_bar
+
+    def increase_font(self):
+        self.settings["label_font_size"] = min(self.settings["label_font_size"] + 2, 72)
+        self.timer_label.configure(font=(FONT_FAMILY, self.settings["label_font_size"], "bold"))
+        self.storage.save_settings()
+
+    def decrease_font(self):
+        self.settings["label_font_size"] = max(self.settings["label_font_size"] - 2, 8)
+        self.timer_label.configure(font=(FONT_FAMILY, self.settings["label_font_size"], "bold"))
+        self.storage.save_settings()
 
     def open_todos_dialog(self):
         todos_win = tb.Toplevel(self.root)
@@ -259,6 +236,8 @@ class PomodoroApp:
         todos_win.title("Todos")
         todos_win.geometry("300x400")
         todos_win.attributes("-topmost", True)
+
+        self.build_menu(todos_win, exclude={"Todos"})
 
         todo_title = tb.Label(todos_win, text="Todos", font=(FONT_FAMILY, 12, "bold"), bootstyle="primary")
         todo_title.pack(anchor="w", pady=(5, 5), padx=5)
@@ -464,11 +443,11 @@ class PomodoroApp:
             self.render_todos()
 
     def on_focus_in(self, event):
-        if sys.platform != "darwin" and event.widget == self.root:
+        if event.widget == self.root:
             self.root.wm_attributes("-alpha", 1.0)
 
     def on_focus_out(self, event):
-        if sys.platform != "darwin" and event.widget == self.root:
+        if event.widget == self.root:
             self.root.wm_attributes("-alpha", self.settings["unfocus_transparency"])
 
     def open_settings_dialog(self):
@@ -478,6 +457,8 @@ class PomodoroApp:
         geom = "320x400" if sys.platform == "darwin" else "320x460"
         settings_win.geometry(geom)
         settings_win.attributes("-topmost", True)
+
+        self.build_menu(settings_win, exclude={"Settings"})
 
         def create_slider(parent, label_text, var, from_, to, is_float=False):
             frame = tb.Frame(parent)
@@ -689,14 +670,9 @@ class PomodoroApp:
         )
         self.start_btn.pack_forget()
         self.start_btn.pack(pady=4)
-        self.continue_btn.pack_forget()
         self.stop_btn.pack_forget()
-
-        if self.current_mode in ["Short Break", "Long Break"]:
-            self.skip_btn.pack_forget()
-            self.set_mode("Work")
-        else:
-            self.set_mode("Work")
+        self.skip_btn.pack_forget()
+        self.set_mode("Work")
 
         for child in self.mode_frame.winfo_children():
             child.configure(state="normal")
@@ -715,7 +691,6 @@ class PomodoroApp:
         )
         self.start_btn.pack_forget()
         self.start_btn.pack(pady=4)
-        self.continue_btn.pack_forget()
         self.stop_btn.pack_forget()
         self.skip_btn.pack_forget()
         self.set_mode("Work")
@@ -772,93 +747,74 @@ class PomodoroApp:
                         self.set_mode("Work")
 
     def maximize_timer(self):
-        self.is_updating_layout = True
-        try:
-            if not self.is_maximized:
-                try:
-                    geom = self.root.geometry()
-                    size = geom.split("+")[0]
-                    w, h = map(int, size.split("x"))
-                    self.settings["window_width"] = w
-                    self.settings["window_height"] = h
-                    self.storage.save_settings()
-                except Exception as e:
-                    print(f"Error saving window size: {e}")
-
-            self.is_maximized = True
-
-            self.mode_frame.pack_forget()
-            self.mode_label.pack_forget()
-            self.start_btn.pack_forget()
-            self.continue_btn.pack_forget()
-            self.stop_btn.pack_forget()
+        if not self.is_maximized:
             try:
-                self.skip_btn.pack_forget()
-            except NameError:
-                pass
-            try:
-                self.maximize_btn.pack_forget()
-            except NameError:
-                pass
+                geom = self.root.geometry()
+                size = geom.split("+")[0]
+                w, h = map(int, size.split("x"))
+                self.settings["window_width"] = w
+                self.settings["window_height"] = h
+                self.storage.save_settings()
+            except Exception as e:
+                print(f"Error saving window size: {e}")
 
-            self.root.config(menu="")
+        self.is_maximized = True
 
-            width = self.settings.get("maximized_window_width", 240)
-            height = self.settings.get("maximized_window_height", 80)
-            self.root.geometry(f"{width}x{height}")
+        self.mode_frame.pack_forget()
+        self.mode_label.pack_forget()
+        self.start_btn.pack_forget()
+        self.stop_btn.pack_forget()
+        self.skip_btn.pack_forget()
+        self.maximize_btn.pack_forget()
 
-            self.timer_frame.pack_forget()
-            self.timer_frame.pack(pady=(15, 5))
+        width = self.settings.get("maximized_window_width", 240)
+        height = self.settings.get("maximized_window_height", 80)
+        self.root.geometry(f"{width}x{height}")
 
-            self.minimize_btn.pack(side="left", padx=(5, 0), anchor="center")
-        finally:
-            self.root.after(100, self.reset_updating_layout)
+        self.timer_frame.pack_forget()
+        self.timer_frame.pack(pady=(15, 5))
+
+        self.minimize_btn.pack(side="left", padx=(5, 0), anchor="center")
 
     def minimize_timer(self):
-        self.is_updating_layout = True
-        try:
-            if self.is_maximized:
-                try:
-                    geom = self.root.geometry()
-                    size = geom.split("+")[0]
-                    w, h = map(int, size.split("x"))
-                    self.settings["maximized_window_width"] = w
-                    self.settings["maximized_window_height"] = h
-                    self.storage.save_settings()
-                except Exception as e:
-                    print(f"Error saving maximized window size: {e}")
-
-            self.is_maximized = False
-
-            self.minimize_btn.pack_forget()
-            self.root.config(menu=self.menu_bar)
-
-            width = self.settings.get("window_width", 290)
-            height = self.settings.get("window_height", 290)
-            self.root.geometry(f"{width}x{height}")
-
-            self.timer_frame.pack_forget()
-            self.timer_frame.pack(pady=0)
-
-            self.mode_frame.pack(pady=(12, 0))
-            self.mode_label.pack(pady=(8, 0))
-
-            self.start_btn.pack(pady=4)
-            if self.current_mode in ["Short Break", "Long Break"]:
-                self.skip_btn.pack(pady=4)
-                self.stop_btn.pack_forget()
-            elif self.start_btn.cget("text") in ["Pause", "Continue"]:
-                self.stop_btn.pack(pady=4)
-                self.skip_btn.pack_forget()
-            else:
-                self.stop_btn.pack_forget()
-                self.skip_btn.pack_forget()
+        if self.is_maximized:
             try:
-                self.maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
-            except NameError:
-                pass
-        finally:
-            self.root.after(100, self.reset_updating_layout)
+                geom = self.root.geometry()
+                size = geom.split("+")[0]
+                w, h = map(int, size.split("x"))
+                self.settings["maximized_window_width"] = w
+                self.settings["maximized_window_height"] = h
+                self.storage.save_settings()
+            except Exception as e:
+                print(f"Error saving maximized window size: {e}")
+
+        self.is_maximized = False
+
+        self.minimize_btn.pack_forget()
+        self.root.config(menu=self.menu_bar)
+
+        width = self.settings.get("window_width", 290)
+        height = self.settings.get("window_height", 290)
+        self.root.geometry(f"{width}x{height}")
+
+        self.timer_frame.pack_forget()
+        self.timer_frame.pack(pady=0)
+
+        self.mode_frame.pack(pady=(12, 0))
+        self.mode_label.pack(pady=(8, 0))
+
+        self.start_btn.pack(pady=4)
+        if self.current_mode in ["Short Break", "Long Break"]:
+            self.skip_btn.pack(pady=4)
+            self.stop_btn.pack_forget()
+        elif self.start_btn.cget("text") in ["Pause", "Continue"]:
+            self.stop_btn.pack(pady=4)
+            self.skip_btn.pack_forget()
+        else:
+            self.stop_btn.pack_forget()
+            self.skip_btn.pack_forget()
+
+        self.maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
 
     def open_report_dialog(self):
         today = date.today().isoformat()
@@ -888,6 +844,8 @@ class PomodoroApp:
         report_win.attributes("-topmost", True)
         report_win.resizable(False, False)
 
+        self.build_menu(report_win, exclude={"Report"})
+
         tb.Label(
             report_win,
             text="📊 Daily Report",
@@ -906,22 +864,18 @@ class PomodoroApp:
         stats_frame = tb.Frame(report_win, padding=10)
         stats_frame.pack(fill="x", padx=20)
 
-        def stat_row(label, value, style="default"):
+        def stat_row(label, value):
             row = tb.Frame(stats_frame)
             row.pack(fill="x", pady=4)
-            tb.Label(row, text=label, font=(FONT_FAMILY, 10), foreground="white").pack(
-                side="left"
-            )
-            tb.Label(
-                row, text=value, font=(FONT_FAMILY, 10, "bold"), foreground="white"
-            ).pack(side="right")
+            tb.Label(row, text=label, font=(FONT_FAMILY, 10), foreground="white").pack(side="left")
+            tb.Label(row, text=value, font=(FONT_FAMILY, 10, "bold"), foreground="white").pack(side="right")
 
         tb.Separator(stats_frame).pack(fill="x", pady=(0, 8))
-        stat_row("🕐 Total Focus Time", fmt_time(total_focus_secs), "info")
+        stat_row("🕐 Total Focus Time", fmt_time(total_focus_secs))
         total_sessions = len(today_sessions)
-        stat_row("💼 Total Sessions", str(total_sessions), "primary")
-        stat_row("⏱  Pomodoro Time", fmt_time(total_work_secs), "primary")
-        stat_row("⏩ Stopwatch Time", fmt_time(total_sw_secs), "success")
+        stat_row("💼 Total Sessions", str(total_sessions))
+        stat_row("⏱  Pomodoro Time", fmt_time(total_work_secs))
+        stat_row("⏩ Stopwatch Time", fmt_time(total_sw_secs))
 
         if not today_sessions:
             tb.Label(

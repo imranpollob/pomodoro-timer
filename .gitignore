@@ -1,36 +1,64 @@
-# Environments
-.env
-.venv
-env/
+# Python virtual environments
+.venv/
 venv/
+env/
 ENV/
 env.bak/
 venv.bak/
 
-# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimised files
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
 
-# Python tool caches
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# Tool data
-.mimocode/
-
-# PyInstaller / Build artifacts
+# Distribution / packaging
 build/
 dist/
 *.egg-info/
 .eggs/
-pomodoro.pkg
+wheels/
+*.egg
+MANIFEST
 
-# Debian packaging workspace and generated packages
+# PyInstaller
+*.spec
+
+# Test & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Type checkers & linters
+.mypy_cache/
+.ruff_cache/
+.pytype/
+pyrightconfig.json
+
+# Version management
+.python-version
+
+# uv
+uv.lock
+
+# PyPI config
+pip-log.txt
+
+# Packaging outputs
+pomodoro.pkg
 deb_workspace/
 *.deb
 
 # OS / editor
 .DS_Store
 .vscode/
+*.swp
+*~
+
+# Tool data
+.mimocode/
