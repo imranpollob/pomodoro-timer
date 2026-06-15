@@ -16,7 +16,8 @@ import tkinter as tk
 import ttkbootstrap as tb
 import os
 from datetime import datetime, date
-from storage import StorageManager
+from storage import StorageManager, CONFIG_DIR
+from drive_sync import GoogleDriveSync
 
 FONT_FAMILY = "Helvetica"
 
@@ -111,8 +112,35 @@ class PomodoroApp:
         self.todo_list_frame = None
         self.todo_list_canvas = None
 
+        # Google Drive sync
+        self.drive_sync = None
+        self._init_drive_sync()
+
         if not headless:
             self.create_ui()
+
+    def _init_drive_sync(self):
+        """Initialize Google Drive sync if credentials exist."""
+        try:
+            self.drive_sync = GoogleDriveSync(CONFIG_DIR)
+            self.storage.set_drive_sync(self.drive_sync)
+            if self.drive_sync.is_connected:
+                self._pull_from_drive()
+        except Exception as e:
+            print(f"Drive sync init failed: {e}")
+
+    def _pull_from_drive(self):
+        """Download and merge data from Google Drive."""
+        if not self.drive_sync or not self.drive_sync.is_connected:
+            return
+        try:
+            remote_data = self.drive_sync.download_data()
+            if remote_data:
+                local_data = self.storage.get_all_data()
+                merged = self.drive_sync.merge_data(local_data, remote_data)
+                self.storage.load_all_data(merged)
+        except Exception as e:
+            print(f"Error pulling from Drive: {e}")
 
     def create_ui(self):
         self.root = tb.Window(themename="superhero")
@@ -245,6 +273,8 @@ class PomodoroApp:
                 self.storage.save_settings()
             except Exception as e:
                 print(f"Error saving window size on close: {e}")
+            if self.drive_sync:
+                self.drive_sync.shutdown()
             self.root.destroy()
 
         self.root.protocol("WM_DELETE_WINDOW", on_close)
@@ -538,6 +568,111 @@ class PomodoroApp:
             create_slider(
                 settings_win, "Unfocused Transparency:", trans_var, 0.1, 1.0, is_float=True
             )
+
+        # Google Drive Sync section
+        tb.Separator(settings_win).pack(fill="x", padx=20, pady=10)
+        tb.Label(
+            settings_win, text="Google Drive Sync", font=(FONT_FAMILY, 11, "bold")
+        ).pack(pady=(0, 5))
+
+        sync_status_var = tk.StringVar(value="Disconnected")
+        sync_last_label = None
+
+        def update_sync_status(connected, last_sync):
+            if connected:
+                sync_status_var.set("Connected")
+                if sync_last_label and last_sync:
+                    sync_last_label.config(text=f"Last sync: {last_sync.strftime('%H:%M:%S')}")
+            else:
+                sync_status_var.set("Disconnected")
+                if sync_last_label:
+                    sync_last_label.config(text="")
+
+        def do_authenticate():
+            from tkinter import messagebox
+            try:
+                if not self.drive_sync:
+                    self.drive_sync = GoogleDriveSync(CONFIG_DIR, on_status_change=update_sync_status)
+                    self.storage.set_drive_sync(self.drive_sync)
+                self.drive_sync.authenticate()
+                self._pull_from_drive()
+                messagebox.showinfo("Success", "Connected to Google Drive!", parent=settings_win)
+                update_sync_status(True, self.drive_sync.last_sync_time)
+            except Exception as e:
+                messagebox.showerror("Error", f"Authentication failed:\n{e}", parent=settings_win)
+
+        def do_sync_now():
+            if self.drive_sync and self.drive_sync.is_connected:
+                try:
+                    data = self.storage.get_all_data()
+                    if self.drive_sync.sync_now(data):
+                        from tkinter import messagebox
+                        messagebox.showinfo("Sync", "Synced successfully!", parent=settings_win)
+                    else:
+                        from tkinter import messagebox
+                        messagebox.showerror("Error", "Sync failed.", parent=settings_win)
+                except Exception as e:
+                    from tkinter import messagebox
+                    messagebox.showerror("Error", f"Sync failed:\n{e}", parent=settings_win)
+            else:
+                from tkinter import messagebox
+                messagebox.showwarning("Not Connected", "Please connect to Google Drive first.", parent=settings_win)
+
+        def do_disconnect():
+            if self.drive_sync:
+                self.drive_sync.disconnect()
+                update_sync_status(False, None)
+                from tkinter import messagebox
+                messagebox.showinfo("Disconnected", "Google Drive sync disabled.", parent=settings_win)
+
+        sync_frame = tb.Frame(settings_win)
+        sync_frame.pack(fill="x", padx=20, pady=5)
+
+        sync_status_label = tb.Label(
+            sync_frame,
+            textvariable=sync_status_var,
+            font=(FONT_FAMILY, 9),
+            bootstyle="info",
+        )
+        sync_status_label.pack(side="left")
+
+        sync_last_label = tb.Label(
+            sync_frame,
+            text="",
+            font=(FONT_FAMILY, 8),
+            bootstyle="secondary",
+        )
+        sync_last_label.pack(side="right")
+
+        if self.drive_sync and self.drive_sync.is_connected:
+            update_sync_status(True, self.drive_sync.last_sync_time)
+
+        btn_frame = tb.Frame(settings_win)
+        btn_frame.pack(fill="x", padx=20, pady=5)
+
+        tb.Button(
+            btn_frame,
+            text="Connect",
+            command=do_authenticate,
+            bootstyle="info-outline",
+            width=10,
+        ).pack(side="left", padx=2)
+
+        tb.Button(
+            btn_frame,
+            text="Sync Now",
+            command=do_sync_now,
+            bootstyle="primary-outline",
+            width=10,
+        ).pack(side="left", padx=2)
+
+        tb.Button(
+            btn_frame,
+            text="Disconnect",
+            command=do_disconnect,
+            bootstyle="danger-outline",
+            width=10,
+        ).pack(side="left", padx=2)
 
         def save():
             try:
