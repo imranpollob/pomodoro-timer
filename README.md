@@ -1,24 +1,26 @@
 # Pomodoro Timer
-A desktop Pomodoro timer and stopwatch app built with Python and Tkinter (ttkbootstrap). It includes a collapsible todo list, daily stats, sound alerts, and customizable window sizes and transparency.
+A desktop Pomodoro timer and stopwatch app built with Python and Tkinter (ttkbootstrap). It includes todo management, daily stats, sound alerts, and customizable window sizes and transparency.
 
 ## Features
 - Customizable Pomodoro cycles: Work, Short Break, Long Break
 - Endless Timer/Stopwatch mode for custom focus sessions
+- Todo management in a separate window with add, edit, delete, and completion tracking
 - Daily Report with today's focus statistics and a statistics reset option in settings
 - Audio notifications on session completion
 - Adjustable font size for a customizable desktop clock feel
 - Always on top, with transparency option when unfocused (transparency on macOS in progress)
 - Timer maximize and minimize option for minimal distraction
-- Collapsible & Resizable Todo management sidebar
 - Remembers and restores custom window dimensions
 
 ## Screenshots
 
-![screen-1](images/main.png)
+![main](images/main.png)
 
-![screen-1](images/stopwatch.png)
+![maximized](images/maximized.png)
 
-![screen-2](images/todos.png)
+![stopwatch](images/stopwatch.png)
+
+![todos](images/todos.png)
 
 ![settings](images/settings.png)
 
