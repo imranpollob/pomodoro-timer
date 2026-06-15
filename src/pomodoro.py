@@ -237,8 +237,6 @@ class PomodoroApp:
         todos_win.geometry("300x400")
         todos_win.attributes("-topmost", True)
 
-        self.build_menu(todos_win, exclude={"Todos"})
-
         todo_title = tb.Label(todos_win, text="Todos", font=(FONT_FAMILY, 12, "bold"), bootstyle="primary")
         todo_title.pack(anchor="w", pady=(5, 5), padx=5)
 
@@ -457,8 +455,6 @@ class PomodoroApp:
         geom = "320x400" if sys.platform == "darwin" else "320x460"
         settings_win.geometry(geom)
         settings_win.attributes("-topmost", True)
-
-        self.build_menu(settings_win, exclude={"Settings"})
 
         def create_slider(parent, label_text, var, from_, to, is_float=False):
             frame = tb.Frame(parent)
@@ -843,8 +839,6 @@ class PomodoroApp:
         report_win.geometry("300x260")
         report_win.attributes("-topmost", True)
         report_win.resizable(False, False)
-
-        self.build_menu(report_win, exclude={"Report"})
 
         tb.Label(
             report_win,
