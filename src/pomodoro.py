@@ -668,7 +668,10 @@ class PomodoroApp:
         self.start_btn.pack(pady=4)
         self.stop_btn.pack_forget()
         self.skip_btn.pack_forget()
-        self.set_mode("Work")
+        if self.current_mode == "Stopwatch":
+            self.set_mode("Stopwatch")
+        else:
+            self.set_mode("Work")
 
         for child in self.mode_frame.winfo_children():
             child.configure(state="normal")
