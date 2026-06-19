@@ -253,7 +253,7 @@ class PomodoroApp:
         input_frame.pack(fill="x", pady=2, padx=5)
 
         self.todo_entry = tb.Entry(input_frame, font=(FONT_FAMILY, 10), bootstyle="secondary")
-        self.todo_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.todo_entry.pack(side="left", fill="both", expand=True, padx=(0, 5))
         self.todo_entry.bind("<Return>", lambda e: self.add_todo_item())
 
         add_btn = tb.Button(input_frame, text="Add", command=self.add_todo_item, bootstyle="info", width=5)
@@ -596,7 +596,7 @@ class PomodoroApp:
                 self.skip_btn.pack(pady=4)
         elif mode == "Stopwatch":
             self.pomodoro_time = 0
-            self.mode_label.config(text=mode, bootstyle="secondary")
+            self.mode_label.config(text=mode, bootstyle="primary")
             self.skip_btn.pack_forget()
             self.stop_btn.pack_forget()
 
@@ -806,11 +806,11 @@ class PomodoroApp:
         height = self.settings.get("window_height", 290)
         self.root.geometry(f"{width}x{height}")
 
-        self.timer_frame.pack_forget()
-        self.timer_frame.pack(pady=0)
-
         self.mode_frame.pack(pady=(12, 0))
         self.mode_label.pack(pady=(8, 0))
+
+        self.timer_frame.pack_forget()
+        self.timer_frame.pack(pady=0)
 
         self.start_btn.pack(pady=4)
         if self.current_mode in ["Short Break", "Long Break"]:
