@@ -51,6 +51,15 @@ uv run pyinstaller --clean --noconfirm pomodoro.spec
 ```
 Then run `dist/pomodoro.exe`.
 
+### Windows — Build installer (.exe)
+Creates a proper Windows installer with Start Menu shortcut and Add/Remove Programs entry.
+Requires [NSIS](https://nsis.sourceforge.io/Download) installed and `makensis` in your PATH.
+
+```bash
+build_windows.bat
+```
+Then run `dist/pomodoro-timer-setup.exe` to install.
+
 ### macOS — Build standalone app bundle
 ```bash
 uv run pyinstaller --clean --noconfirm pomodoro.spec
