@@ -27,4 +27,3 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 echo Done! Installer created: dist\pomodoro-timer-setup.exe
-pause

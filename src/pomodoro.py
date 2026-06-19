@@ -173,6 +173,15 @@ class PomodoroApp:
 
         self.menu_bar = self.build_menu(self.root)
 
+        # On Windows the native menu bar occupies height from within the client
+        # area after geometry() is first applied, causing the window to appear
+        # shorter than saved. Re-applying the geometry once the menu is attached
+        # and the layout is flushed corrects the size without affecting the saved
+        # value. mac/linux are unaffected.
+        if sys.platform == "win32":
+            self.root.update_idletasks()
+            self.root.geometry(f"{width}x{height}")
+
         if sys.platform != "darwin":
             self.root.bind("<FocusIn>", self.on_focus_in)
             self.root.bind("<FocusOut>", self.on_focus_out)

@@ -56,7 +56,7 @@ Creates a proper Windows installer with Start Menu shortcut and Add/Remove Progr
 Requires [NSIS](https://nsis.sourceforge.io/Download) installed and `makensis` in your PATH.
 
 ```bash
-build_windows.bat
+.\build_windows.bat
 ```
 Then run `dist/pomodoro-timer-setup.exe` to install.
 
