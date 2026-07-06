@@ -1,11 +1,28 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+import tomllib
+
+
+def get_project_version():
+    with open("pyproject.toml", "rb") as f:
+        return tomllib.load(f)["project"]["version"]
+
+
+project_version = get_project_version()
+
 
 a = Analysis(
     ['src/pomodoro.py'],
     pathex=[],
     binaries=[],
-    datas=[('src/stopwatch.ico', '.'), ('src/stopwatch.png', '.'), ('src/stopwatch.icns', '.'), ('src/complete.oga', '.')],
+    datas=[
+        ('src/stopwatch.ico', '.'),
+        ('src/stopwatch.png', '.'),
+        ('src/stopwatch.icns', '.'),
+        ('src/complete.oga', '.'),
+        ('pyproject.toml', '.'),
+    ],
     hiddenimports=['PIL._tkinter_finder'],
     hookspath=[],
     hooksconfig={},
@@ -38,7 +55,6 @@ exe = EXE(
     icon='src/stopwatch.ico',
 )
 
-import sys
 if sys.platform == 'darwin':
     app = BUNDLE(
         exe,
@@ -49,8 +65,8 @@ if sys.platform == 'darwin':
             'CFBundleName': 'Pomodoro',
             'CFBundleDisplayName': 'Pomodoro',
             'CFBundleIdentifier': 'com.imranpollob.pomodoro-timer',
-            'CFBundleVersion': '0.2',
-            'CFBundleShortVersionString': '0.2',
+            'CFBundleVersion': project_version,
+            'CFBundleShortVersionString': project_version,
             'NSHighResolutionCapable': True,
         }
     )

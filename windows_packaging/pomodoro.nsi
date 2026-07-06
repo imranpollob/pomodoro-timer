@@ -3,6 +3,10 @@
 
 !include "MUI2.nsh"
 
+!ifndef APP_VERSION
+    !error "APP_VERSION must be provided by the build script"
+!endif
+
 ; ── App metadata ──────────────────────────────────────────────
 Name "Pomodoro Timer"
 OutFile "..\dist\pomodoro-timer-setup.exe"
@@ -12,7 +16,6 @@ RequestExecutionLevel user
 
 !define APP_NAME      "Pomodoro Timer"
 !define APP_EXE       "pomodoro.exe"
-!define APP_VERSION   "0.2"
 !define APP_PUBLISHER "Imran Pollob"
 !define APP_WEBURL    "https://github.com/imranpollob/pomodoro-timer"
 

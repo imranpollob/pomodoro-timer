@@ -30,6 +30,10 @@ A desktop Pomodoro timer and stopwatch app built with Python and Tkinter (ttkboo
 
 We use `uv` for dependency management. Install it from [here](https://docs.astral.sh/uv/getting-started/installation/) if you don't have it.
 
+## Versioning
+
+The app version is defined once in `pyproject.toml`. Platform builds read that value for the Settings window, the Linux `.deb` package, the Windows installer, and the macOS app bundle.
+
 ## Running
 
 ### Run directly (all platforms)

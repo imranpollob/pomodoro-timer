@@ -2,6 +2,7 @@
 set -e
 
 PKG_NAME="pomodoro-timer_amd64"
+APP_VERSION=$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
 
 echo "==> Building binary with PyInstaller..."
 uv run pyinstaller --clean pomodoro.spec
@@ -15,7 +16,7 @@ mkdir -p deb_workspace/usr/share/icons/hicolor/48x48/apps
 
 cp dist/pomodoro                              deb_workspace/usr/bin/
 cp linux_packaging/pomodoro.desktop          deb_workspace/usr/share/applications/
-cp linux_packaging/control                   deb_workspace/DEBIAN/
+sed "s/@VERSION@/${APP_VERSION}/g" linux_packaging/control.in > deb_workspace/DEBIAN/control
 cp linux_packaging/icons/pomodoro.png        deb_workspace/usr/share/icons/hicolor/48x48/apps/pomodoro.png
 
 echo "==> Building .deb package..."

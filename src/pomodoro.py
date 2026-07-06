@@ -38,10 +38,13 @@ def get_app_version():
     except metadata.PackageNotFoundError:
         pass
 
-    pyproject_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "pyproject.toml",
-    )
+    if getattr(sys, "frozen", False):
+        pyproject_path = get_resource_path("pyproject.toml")
+    else:
+        pyproject_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "pyproject.toml",
+        )
     try:
         with open(pyproject_path, "rb") as f:
             return tomllib.load(f)["project"]["version"]

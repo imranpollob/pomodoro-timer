@@ -1,6 +1,12 @@
 @echo off
 setlocal
 
+for /f "usebackq delims=" %%V in (`uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])"`) do set "APP_VERSION=%%V"
+if not defined APP_VERSION (
+    echo ERROR: Could not read project version from pyproject.toml.
+    exit /b 1
+)
+
 echo ==> Building executable with PyInstaller...
 uv run pyinstaller --clean --noconfirm pomodoro.spec
 if %ERRORLEVEL% neq 0 (
@@ -19,7 +25,7 @@ if not defined MAKENSIS (
     exit /b 1
 )
 
-"%MAKENSIS%" windows_packaging\pomodoro.nsi
+"%MAKENSIS%" /DAPP_VERSION=%APP_VERSION% windows_packaging\pomodoro.nsi
 if %ERRORLEVEL% neq 0 (
     echo ERROR: NSIS build failed.
     exit /b 1

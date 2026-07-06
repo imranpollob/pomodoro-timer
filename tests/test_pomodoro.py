@@ -1,8 +1,12 @@
 import json
 import pathlib
 import sys
+import tomllib
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
+PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
+PROJECT_VERSION = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 import pomodoro
 from storage import StorageManager
@@ -212,7 +216,35 @@ def test_get_app_version_falls_back_to_pyproject(monkeypatch):
 
     monkeypatch.setattr(pomodoro.metadata, "version", missing_package)
 
-    assert pomodoro.get_app_version() == "0.2"
+    assert pomodoro.get_app_version() == PROJECT_VERSION
+
+
+def test_get_app_version_reads_bundled_pyproject_when_frozen(tmp_path, monkeypatch):
+    def missing_package(package_name):
+        raise pomodoro.metadata.PackageNotFoundError
+
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\nname = "pomodoro-timer"\nversion = "{PROJECT_VERSION}"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(pomodoro.metadata, "version", missing_package)
+    monkeypatch.setattr(pomodoro.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(pomodoro.sys, "_MEIPASS", str(tmp_path), raising=False)
+
+    assert pomodoro.get_app_version() == PROJECT_VERSION
+
+
+def test_get_app_version_returns_unknown_without_metadata_or_pyproject(monkeypatch):
+    def missing_package(package_name):
+        raise pomodoro.metadata.PackageNotFoundError
+
+    def missing_pyproject(path, mode):
+        raise OSError
+
+    monkeypatch.setattr(pomodoro.metadata, "version", missing_package)
+    monkeypatch.setattr(pomodoro, "open", missing_pyproject, raising=False)
+
+    assert pomodoro.get_app_version() == "unknown"
 
 
 def test_apply_window_icon_uses_ico_on_windows(tmp_path, monkeypatch):

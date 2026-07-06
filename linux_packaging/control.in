@@ -1,5 +1,5 @@
 Package: pomodoro-timer
-Version: 0.2
+Version: @VERSION@
 Section: utils
 Priority: optional
 Architecture: amd64
