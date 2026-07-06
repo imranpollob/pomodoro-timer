@@ -212,20 +212,7 @@ class PomodoroApp:
         else:
             self.set_mode("Work")
 
-        def on_close():
-            try:
-                geom = self.root.geometry()
-                size = geom.split("+")[0]
-                w, h = map(int, size.split("x"))
-                if not self.is_maximized:
-                    self.settings["window_width"] = w
-                    self.settings["window_height"] = h
-                self.storage.save_settings()
-            except Exception as e:
-                print(f"Error saving window size on close: {e}")
-            self.root.destroy()
-
-        self.root.protocol("WM_DELETE_WINDOW", on_close)
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def build_menu(self, window, exclude=None):
         exclude = exclude or set()
@@ -682,20 +669,7 @@ class PomodoroApp:
 
     def stop_pomodoro(self):
         self.timer_running = False
-        if self.current_mode == "Stopwatch":
-            elapsed = 0
-            if self.stopwatch_start_time is not None:
-                elapsed = (datetime.now() - self.stopwatch_start_time).total_seconds()
-            total_active = self.stopwatch_accumulated_seconds + elapsed
-            self.storage.log_session("Stopwatch", total_active)
-            self.stopwatch_start_time = None
-            self.stopwatch_accumulated_seconds = 0
-        else:
-            total_duration = self.settings["work_time"] * 60 if self.current_mode == "Work" else (
-                self.settings["short_break"] * 60 if self.current_mode == "Short Break" else self.settings["long_break"] * 60
-            )
-            elapsed = total_duration - self.pomodoro_time
-            self.storage.log_session(self.current_mode, elapsed)
+        self.log_current_session()
 
         self.start_btn.config(
             text="Start", command=self.start_pomodoro, bootstyle="primary"
@@ -711,6 +685,39 @@ class PomodoroApp:
 
         for child in self.mode_frame.winfo_children():
             child.configure(state="normal")
+
+    def log_current_session(self):
+        if self.current_mode == "Stopwatch":
+            elapsed = 0
+            if self.stopwatch_start_time is not None:
+                elapsed = (datetime.now() - self.stopwatch_start_time).total_seconds()
+            total_active = self.stopwatch_accumulated_seconds + elapsed
+            self.storage.log_session("Stopwatch", total_active)
+            self.stopwatch_start_time = None
+            self.stopwatch_accumulated_seconds = 0
+            return
+
+        total_duration = self.settings["work_time"] * 60 if self.current_mode == "Work" else (
+            self.settings["short_break"] * 60 if self.current_mode == "Short Break" else self.settings["long_break"] * 60
+        )
+        elapsed = total_duration - self.pomodoro_time
+        self.storage.log_session(self.current_mode, elapsed)
+
+    def on_close(self):
+        self.log_current_session()
+        self.timer_running = False
+
+        try:
+            geom = self.root.geometry()
+            size = geom.split("+")[0]
+            w, h = map(int, size.split("x"))
+            if not self.is_maximized:
+                self.settings["window_width"] = w
+                self.settings["window_height"] = h
+            self.storage.save_settings()
+        except Exception as e:
+            print(f"Error saving window size on close: {e}")
+        self.root.destroy()
 
     def skip_break(self):
         self.timer_running = False

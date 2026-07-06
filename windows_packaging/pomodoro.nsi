@@ -12,7 +12,7 @@ RequestExecutionLevel user
 
 !define APP_NAME      "Pomodoro Timer"
 !define APP_EXE       "pomodoro.exe"
-!define APP_VERSION   "0.1.1"
+!define APP_VERSION   "0.2"
 !define APP_PUBLISHER "Imran Pollob"
 !define APP_WEBURL    "https://github.com/imranpollob/pomodoro-timer"
 

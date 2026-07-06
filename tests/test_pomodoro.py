@@ -93,6 +93,8 @@ class FakeRoot:
         self.geometry_calls = []
         self.iconbitmap_calls = []
         self.iconphoto_calls = []
+        self.protocol_calls = []
+        self.destroy_calls = 0
         self.current_geom = current_geom
 
     def after(self, delay, callback):
@@ -127,6 +129,12 @@ class FakeRoot:
 
     def iconphoto(self, *args):
         self.iconphoto_calls.append(args)
+
+    def protocol(self, name, callback):
+        self.protocol_calls.append((name, callback))
+
+    def destroy(self):
+        self.destroy_calls += 1
 
 
 class FakeEntry(FakeWidget):
@@ -204,7 +212,7 @@ def test_get_app_version_falls_back_to_pyproject(monkeypatch):
 
     monkeypatch.setattr(pomodoro.metadata, "version", missing_package)
 
-    assert pomodoro.get_app_version() == "0.1.1"
+    assert pomodoro.get_app_version() == "0.2"
 
 
 def test_apply_window_icon_uses_ico_on_windows(tmp_path, monkeypatch):
@@ -356,6 +364,23 @@ def test_stop_pomodoro_logs_work_session(tmp_path):
     assert history[0]["duration_seconds"] == 10 * 60
 
 
+def test_on_close_logs_running_work_session(tmp_path):
+    app = get_test_app(tmp_path)
+    app.timer_running = True
+    app.current_mode = "Work"
+    app.settings["work_time"] = 25
+    app.pomodoro_time = 20 * 60
+
+    app.on_close()
+
+    history = app.storage.load_history()
+    assert len(history) == 1
+    assert history[0]["type"] == "Work"
+    assert history[0]["duration_seconds"] == 5 * 60
+    assert app.timer_running is False
+    assert app.root.destroy_calls == 1
+
+
 def test_stop_pomodoro_logs_stopwatch_session(tmp_path, monkeypatch):
     app = get_test_app(tmp_path)
     app.timer_running = True
@@ -378,6 +403,31 @@ def test_stop_pomodoro_logs_stopwatch_session(tmp_path, monkeypatch):
     assert len(history) == 1
     assert history[0]["type"] == "Stopwatch"
     assert history[0]["duration_seconds"] == 30
+
+
+def test_on_close_logs_running_stopwatch_session(tmp_path, monkeypatch):
+    app = get_test_app(tmp_path)
+    app.timer_running = True
+    app.current_mode = "Stopwatch"
+
+    from datetime import datetime, timedelta
+    start_time = datetime.now()
+    app.stopwatch_start_time = start_time
+
+    class MockDateTime:
+        @classmethod
+        def now(cls):
+            return start_time + timedelta(seconds=45)
+    monkeypatch.setattr(pomodoro, "datetime", MockDateTime)
+
+    app.on_close()
+
+    history = app.storage.load_history()
+    assert len(history) == 1
+    assert history[0]["type"] == "Stopwatch"
+    assert history[0]["duration_seconds"] == 45
+    assert app.timer_running is False
+    assert app.root.destroy_calls == 1
 
 
 def test_stop_pomodoro_logs_stopwatch_session_with_pauses(tmp_path, monkeypatch):
