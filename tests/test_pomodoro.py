@@ -198,6 +198,15 @@ def test_get_resource_path_uses_meipass_when_frozen(tmp_path, monkeypatch):
     assert icon_path == str(tmp_path / "stopwatch.ico")
 
 
+def test_get_app_version_falls_back_to_pyproject(monkeypatch):
+    def missing_package(package_name):
+        raise pomodoro.metadata.PackageNotFoundError
+
+    monkeypatch.setattr(pomodoro.metadata, "version", missing_package)
+
+    assert pomodoro.get_app_version() == "0.1.1"
+
+
 def test_apply_window_icon_uses_ico_on_windows(tmp_path, monkeypatch):
     ico_path = tmp_path / "stopwatch.ico"
     ico_path.write_bytes(b"fake")
@@ -241,7 +250,7 @@ def test_set_mode_stopwatch_resets_to_zero(tmp_path):
     assert app.pomodoro_time == 0
     assert app.mode_label.config_calls[-1] == {
         "text": "Stopwatch",
-        "bootstyle": "secondary",
+        "bootstyle": "primary",
     }
     assert app.timer_label.config_calls[-1] == {"text": "00:00"}
 

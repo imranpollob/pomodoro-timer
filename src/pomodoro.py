@@ -15,10 +15,13 @@ if sys.platform == "darwin":
 import tkinter as tk
 import ttkbootstrap as tb
 import os
+import tomllib
 from datetime import datetime, date
+from importlib import metadata
 from storage import StorageManager
 
 FONT_FAMILY = "Helvetica"
+PACKAGE_NAME = "pomodoro-timer"
 
 
 def get_resource_path(filename):
@@ -27,6 +30,23 @@ def get_resource_path(filename):
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, filename)
+
+
+def get_app_version():
+    try:
+        return metadata.version(PACKAGE_NAME)
+    except metadata.PackageNotFoundError:
+        pass
+
+    pyproject_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "pyproject.toml",
+    )
+    try:
+        with open(pyproject_path, "rb") as f:
+            return tomllib.load(f)["project"]["version"]
+    except (OSError, KeyError, tomllib.TOMLDecodeError):
+        return "unknown"
 
 
 def apply_window_icon(window):
@@ -572,6 +592,13 @@ class PomodoroApp:
         tb.Button(
             settings_win, text="Save Settings", command=save, bootstyle="success", width=20
         ).pack(pady=15)
+
+        tb.Label(
+            settings_win,
+            text=f"Version {get_app_version()}",
+            font=(FONT_FAMILY, 9),
+            bootstyle="primary",
+        ).pack(side="bottom", pady=(0, 10))
 
     def set_mode(self, mode):
         self.current_mode = mode

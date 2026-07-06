@@ -49,8 +49,8 @@ if sys.platform == 'darwin':
             'CFBundleName': 'Pomodoro',
             'CFBundleDisplayName': 'Pomodoro',
             'CFBundleIdentifier': 'com.imranpollob.pomodoro-timer',
-            'CFBundleVersion': '0.1.0',
-            'CFBundleShortVersionString': '0.1.0',
+            'CFBundleVersion': '0.1.1',
+            'CFBundleShortVersionString': '0.1.1',
             'NSHighResolutionCapable': True,
         }
     )
