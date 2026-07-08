@@ -68,9 +68,23 @@ def apply_window_icon(window):
 
     if sys.platform == "win32":
         try:
+            import ctypes
             ico_path = get_resource_path("stopwatch.ico")
             if os.path.exists(ico_path):
                 window.iconbitmap(ico_path)
+                window.update_idletasks()
+                WM_SETICON = 0x0080
+                ICON_SMALL = 0
+                ICON_BIG = 1
+                hicon = ctypes.windll.user32.LoadImageW(
+                    0, ico_path, 1, 0, 0, 0x00000010
+                )
+                if hicon:
+                    hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
+                    if not hwnd:
+                        hwnd = window.winfo_id()
+                    ctypes.windll.user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hicon)
+                    ctypes.windll.user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, hicon)
         except Exception:
             pass
         return
