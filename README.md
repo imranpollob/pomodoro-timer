@@ -56,6 +56,8 @@ uv run src/pomodoro.py
 Build and install a native `.deb` package for full desktop integration:
 
 ```bash
+./build_deb.sh
+sudo dpkg -i pomodoro-timer_amd64.deb
 ```
 
 ### Windows — Build standalone executable
