@@ -139,6 +139,10 @@ class PomodoroApp:
         self.todo_list_frame = None
         self.todo_list_canvas = None
 
+        self._settings_win = None
+        self._todos_win = None
+        self._report_win = None
+
         if not headless:
             self.create_ui()
 
@@ -264,7 +268,13 @@ class PomodoroApp:
         self.storage.save_settings()
 
     def open_todos_dialog(self):
+        if self._todos_win is not None and self._todos_win.winfo_exists():
+            self._todos_win.lift()
+            self._todos_win.focus_force()
+            return
+
         todos_win = tb.Toplevel(self.root)
+        self._todos_win = todos_win
         apply_window_icon(todos_win)
         todos_win.title("Todos")
         todos_win.geometry("300x400")
@@ -334,6 +344,12 @@ class PomodoroApp:
 
         self.todo_list_canvas.bind("<Enter>", bind_mousewheel)
         self.todo_list_canvas.bind("<Leave>", unbind_mousewheel)
+
+        def on_todos_close():
+            self._todos_win = None
+            todos_win.destroy()
+
+        todos_win.protocol("WM_DELETE_WINDOW", on_todos_close)
 
         self.render_todos()
         self.todo_entry.focus_set()
@@ -482,7 +498,13 @@ class PomodoroApp:
             self.root.wm_attributes("-alpha", self.settings["unfocus_transparency"])
 
     def open_settings_dialog(self):
+        if self._settings_win is not None and self._settings_win.winfo_exists():
+            self._settings_win.lift()
+            self._settings_win.focus_force()
+            return
+
         settings_win = tb.Toplevel(self.root)
+        self._settings_win = settings_win
         apply_window_icon(settings_win)
         settings_win.title("Settings")
         geom = "320x400" if sys.platform == "darwin" else "320x460"
@@ -568,7 +590,7 @@ class PomodoroApp:
                             self.set_mode("Work")
                         else:
                             self.set_mode(self.current_mode)
-                settings_win.destroy()
+                on_settings_close()
             except ValueError:
                 pass
 
@@ -603,6 +625,12 @@ class PomodoroApp:
             font=(FONT_FAMILY, 9),
             bootstyle="primary",
         ).pack(side="bottom", pady=(0, 10))
+
+        def on_settings_close():
+            self._settings_win = None
+            settings_win.destroy()
+
+        settings_win.protocol("WM_DELETE_WINDOW", on_settings_close)
 
     def set_mode(self, mode):
         self.current_mode = mode
@@ -877,6 +905,11 @@ class PomodoroApp:
         self.maximize_btn.pack(side="left", padx=(5, 0), anchor="center")
 
     def open_report_dialog(self):
+        if self._report_win is not None and self._report_win.winfo_exists():
+            self._report_win.lift()
+            self._report_win.focus_force()
+            return
+
         today = date.today().isoformat()
         history = self.storage.load_history()
         today_sessions = [s for s in history if s.get("date") == today]
@@ -898,11 +931,18 @@ class PomodoroApp:
             return f"{s}s"
 
         report_win = tb.Toplevel(self.root)
+        self._report_win = report_win
         apply_window_icon(report_win)
         report_win.title("Daily Report")
         report_win.geometry("300x260")
         report_win.attributes("-topmost", True)
         report_win.resizable(False, False)
+
+        def on_report_close():
+            self._report_win = None
+            report_win.destroy()
+
+        report_win.protocol("WM_DELETE_WINDOW", on_report_close)
 
         tb.Label(
             report_win,

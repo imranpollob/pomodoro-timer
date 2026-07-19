@@ -38,11 +38,11 @@ We use `uv` for dependency management. Install it from [here](https://docs.astra
 
 The app version is defined once in `pyproject.toml`. Platform builds read that value for the Settings window, the Linux `.deb` package, the Windows installer, and the macOS app bundle.
 
-To publish new executables, bump the version in `pyproject.toml`, then push a matching tag (e.g. `v0.2.2`). This triggers the `Release` GitHub Actions workflow, which builds all three platforms and attaches them to a new GitHub Release:
+To publish new executables, bump the version in `pyproject.toml`, then push a matching tag (e.g. `v0.2.3`). This triggers the `Release` GitHub Actions workflow, which builds all three platforms and attaches them to a new GitHub Release:
 
 ```bash
-git tag v0.2.2
-git push origin v0.2.2
+git tag v0.2.3
+git push origin v0.2.3
 ```
 
 ## Running
