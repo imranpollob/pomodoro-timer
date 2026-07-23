@@ -10,14 +10,35 @@ permissions:
 
 jobs:
   linux:
-    runs-on: ubuntu-latest
+    # Pin the distro so python3-tk is guaranteed to match Python 3.12.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install Linux GUI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes python3-tk xvfb
+
+      - name: Install locked Python dependencies
+        run: uv sync --locked --python /usr/bin/python3.12
 
       - name: Build .deb package
         run: bash build_deb.sh
+
+      - name: Install and smoke-test .deb package
+        run: |
+          sudo dpkg --install pomodoro-timer_amd64.deb
+          set +e
+          timeout 10s xvfb-run --auto-servernum /usr/bin/pomodoro
+          status=$?
+          set -e
+          if [ "$status" -ne 124 ]; then
+            echo "The installed application exited unexpectedly with status $status" >&2
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
