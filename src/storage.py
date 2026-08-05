@@ -24,6 +24,8 @@ DEFAULT_SETTINGS = {
     "window_height": 290,
     "maximized_window_width": 240,
     "maximized_window_height": 80,
+    "jsonbin_bin_id": "",
+    "jsonbin_access_key": "",
 }
 
 

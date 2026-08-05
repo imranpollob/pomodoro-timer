@@ -16,9 +16,11 @@ import tkinter as tk
 import ttkbootstrap as tb
 import os
 import tomllib
+import requests
 from datetime import datetime, date
 from importlib import metadata
 from storage import StorageManager
+from sync import JsonBinClient, merge_todos, purge_old_tombstones
 
 FONT_FAMILY = "Helvetica"
 PACKAGE_NAME = "pomodoro-timer"
@@ -280,8 +282,16 @@ class PomodoroApp:
         todos_win.geometry("300x400")
         todos_win.attributes("-topmost", True)
 
-        todo_title = tb.Label(todos_win, text="Todos", font=(FONT_FAMILY, 12, "bold"), bootstyle="primary")
-        todo_title.pack(anchor="w", pady=(5, 5), padx=5)
+        title_frame = tb.Frame(todos_win)
+        title_frame.pack(fill="x", pady=(5, 5), padx=5)
+
+        todo_title = tb.Label(title_frame, text="Todos", font=(FONT_FAMILY, 12, "bold"), bootstyle="primary")
+        todo_title.pack(side="left", anchor="w")
+
+        self.todo_sync_btn = tb.Button(
+            title_frame, text="⟳ Sync", command=self.sync_todos, bootstyle="success", width=8
+        )
+        self.todo_sync_btn.pack(side="right")
 
         input_frame = tb.Frame(todos_win)
         input_frame.pack(fill="x", pady=2, padx=5)
@@ -362,6 +372,9 @@ class PomodoroApp:
             widget.destroy()
 
         for todo in self.storage.todos:
+            if todo.get("deleted"):
+                continue
+
             item_frame = tb.Frame(self.todo_list_frame)
             item_frame.pack(fill="x", pady=4, padx=5)
 
@@ -379,6 +392,7 @@ class PomodoroApp:
                     new_text = var.get().strip()
                     if new_text:
                         t["text"] = new_text
+                        t["updated_at"] = datetime.now().isoformat()
                         self.storage.save_todos()
                     self.editing_todo_ids.discard(t["id"])
                     self.render_todos()
@@ -468,7 +482,8 @@ class PomodoroApp:
             self.storage.todos.append({
                 "id": todo_id,
                 "text": text,
-                "done": False
+                "done": False,
+                "updated_at": datetime.now().isoformat(),
             })
             self.storage.save_todos()
             self.todo_entry.delete(0, tk.END)
@@ -476,6 +491,7 @@ class PomodoroApp:
 
     def toggle_todo_status(self, todo, is_done):
         todo["done"] = is_done
+        todo["updated_at"] = datetime.now().isoformat()
         self.storage.save_todos()
         self.render_todos()
 
@@ -485,9 +501,49 @@ class PomodoroApp:
 
     def delete_todo_item(self, todo):
         if todo in self.storage.todos:
-            self.storage.todos.remove(todo)
+            todo["deleted"] = True
+            todo["updated_at"] = datetime.now().isoformat()
             self.storage.save_todos()
             self.render_todos()
+
+    def sync_todos(self):
+        from tkinter import messagebox
+
+        bin_id = self.settings.get("jsonbin_bin_id", "").strip()
+        access_key = self.settings.get("jsonbin_access_key", "").strip()
+        parent = self._todos_win
+
+        if not bin_id or not access_key:
+            messagebox.showwarning(
+                "Sync",
+                "Please set your JSONBin Bin ID and Access Key in Settings first.",
+                parent=parent,
+            )
+            return
+
+        client = JsonBinClient(bin_id, access_key)
+
+        try:
+            remote_todos = client.load()
+        except (requests.RequestException, ValueError) as e:
+            messagebox.showerror("Sync Failed", f"Could not download todos: {e}", parent=parent)
+            return
+
+        merged = merge_todos(self.storage.todos, remote_todos)
+        merged = purge_old_tombstones(merged)
+
+        try:
+            client.save(merged)
+        except requests.RequestException as e:
+            messagebox.showerror(
+                "Sync Failed", f"Merged locally but could not upload to JSONBin: {e}", parent=parent
+            )
+            return
+
+        self.storage.todos = merged
+        self.storage.save_todos()
+        self.render_todos()
+        messagebox.showinfo("Sync", "Todos synced successfully.", parent=parent)
 
     def on_focus_in(self, event):
         if event.widget == self.root:
@@ -507,7 +563,7 @@ class PomodoroApp:
         self._settings_win = settings_win
         apply_window_icon(settings_win)
         settings_win.title("Settings")
-        geom = "320x400" if sys.platform == "darwin" else "320x460"
+        geom = "320x490" if sys.platform == "darwin" else "320x550"
         settings_win.geometry(geom)
         settings_win.attributes("-topmost", True)
 
@@ -571,6 +627,26 @@ class PomodoroApp:
                 settings_win, "Unfocused Transparency:", trans_var, 0.1, 1.0, is_float=True
             )
 
+        tb.Label(
+            settings_win, text="JSONBin Sync", font=(FONT_FAMILY, 10, "bold"), bootstyle="primary"
+        ).pack(anchor="w", padx=20, pady=(10, 0))
+
+        bin_id_frame = tb.Frame(settings_win)
+        bin_id_frame.pack(fill="x", padx=20, pady=(5, 2))
+        tb.Label(bin_id_frame, text="Bin ID:", font=(FONT_FAMILY, 9), width=10, anchor="w").pack(side="left")
+        bin_id_var = tk.StringVar(value=self.settings.get("jsonbin_bin_id", ""))
+        tb.Entry(bin_id_frame, textvariable=bin_id_var, font=(FONT_FAMILY, 9)).pack(
+            side="left", fill="x", expand=True
+        )
+
+        access_key_frame = tb.Frame(settings_win)
+        access_key_frame.pack(fill="x", padx=20, pady=(2, 5))
+        tb.Label(access_key_frame, text="Access Key:", font=(FONT_FAMILY, 9), width=10, anchor="w").pack(side="left")
+        access_key_var = tk.StringVar(value=self.settings.get("jsonbin_access_key", ""))
+        tb.Entry(access_key_frame, textvariable=access_key_var, font=(FONT_FAMILY, 9), show="*").pack(
+            side="left", fill="x", expand=True
+        )
+
         def save():
             try:
                 self.settings["work_time"] = int(work_var.get())
@@ -579,6 +655,8 @@ class PomodoroApp:
                 self.settings["long_break_interval"] = int(interval_var.get())
                 self.settings["sound_enabled"] = sound_var.get()
                 self.settings["unfocus_transparency"] = float(trans_var.get())
+                self.settings["jsonbin_bin_id"] = bin_id_var.get().strip()
+                self.settings["jsonbin_access_key"] = access_key_var.get().strip()
                 self.storage.save_settings()
                 if sys.platform != "darwin":
                     self.root.attributes("-alpha", self.settings["unfocus_transparency"])

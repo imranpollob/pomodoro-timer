@@ -9,6 +9,7 @@ Prebuilt executables for Windows, macOS, and Linux are published on the [Release
 - Customizable Pomodoro cycles: Work, Short Break, Long Break
 - Endless Timer/Stopwatch mode for custom focus sessions
 - Todo management in a separate window with add, edit, delete, and completion tracking
+- Optional todo sync across devices via [JSONBin](https://jsonbin.io)
 - Daily Report with today's focus statistics and a statistics reset option in settings
 - Audio notifications on session completion
 - Adjustable font size for a customizable desktop clock feel
@@ -102,6 +103,46 @@ Then run `open dist/Pomodoro.app` (or double-click the bundle in Finder).
 Settings (`settings.json`) and session statistics (`history.json`) are stored in the user profile directory:
 - **Windows**: `%APPDATA%\pomodoro-timer\` (e.g., `C:\Users\<username>\AppData\Roaming\pomodoro-timer\`)
 - **macOS & Linux**: `~/.config/pomodoro-timer/`
+
+## Todo Sync (JSONBin)
+Todos can be synced across devices using [JSONBin](https://jsonbin.io) as free cloud storage. The Sync button in the Todos window pulls the remote list, merges it with your local todos (the most recently edited version of each item wins), pushes the merged result back, and saves it locally.
+
+### 1. Create a bin
+JSONBin doesn't allow creating an empty bin, so seed it with a sample todo — the app will overwrite it on the first sync anyway:
+
+1. Sign up / log in at [jsonbin.io](https://jsonbin.io).
+2. Go to **Bins** and click **Create a Bin**.
+3. Paste the following as the bin content and save:
+   ```json
+   [
+       {
+           "id": 1,
+           "text": "Sample todo",
+           "done": false
+       }
+   ]
+   ```
+4. Copy the **Bin ID** shown for that bin — you'll need it in step 3.
+
+### 2. Create a scoped access key
+Don't use your account's **X-Master-Key** in the app — it grants full access to every bin on your account. Instead create a key scoped to just this bin:
+
+1. Go to **API Keys** and click **Create Access Key**.
+2. Give it a name (e.g. `pomodoro-todos`) and restrict it to the bin you created above.
+3. Grant **Read** and **Update** permissions — that's all the app uses (`GET .../latest` and `PUT ...`); Create and Delete aren't needed.
+4. Copy the generated **X-Access-Key** value — this is a long string starting with `$2a$...`, not the shorter "Access Key ID".
+
+### 3. Configure the app
+1. Open **Settings** in the app.
+2. Under **JSONBin Sync**, paste the **Bin ID** from step 1 and the **Access Key** from step 2.
+3. Click **Save Settings**.
+
+### 4. Sync
+Open the **Todos** window and click **Sync**. The first sync will pull in the "Sample todo" from step 1 — just delete it once, and that deletion will sync to every device from then on. Repeat on each device using the same Bin ID and Access Key to keep todos in sync.
+
+**Note:** merging is based on an `updated_at` timestamp per todo, not real-time collaboration — for the same todo edited on two devices before either syncs, the most recently edited (or deleted) version wins.
+
+Deleted todos are kept as hidden "tombstones" for 7 days after deletion so the deletion has time to reach every device on its next sync, then they're purged automatically. If a device goes more than 7 days without syncing, a todo it deleted in that window could reappear.
 
 ## Running tests
 ```bash

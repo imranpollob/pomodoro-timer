@@ -743,9 +743,12 @@ def test_delete_todo_item(tmp_path, monkeypatch):
 
     app.delete_todo_item(todo1)
 
-    assert len(app.storage.todos) == 1
-    assert app.storage.todos[0]["id"] == 2
+    assert len(app.storage.todos) == 2
+    assert app.storage.todos[0]["id"] == 1
+    assert app.storage.todos[0]["deleted"] is True
+    assert "updated_at" in app.storage.todos[0]
+    assert app.storage.todos[1]["id"] == 2
 
     saved_todos = json.loads(app.storage.todos_file.read_text(encoding="utf-8"))
-    assert len(saved_todos) == 1
-    assert saved_todos[0]["id"] == 2
+    assert len(saved_todos) == 2
+    assert saved_todos[0]["deleted"] is True
