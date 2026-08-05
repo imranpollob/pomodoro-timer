@@ -90,6 +90,8 @@ class FakeFrame(FakeWidget):
 class FakeRoot:
     def __init__(self, current_geom="290x290+100+100"):
         self.after_calls = []
+        self.after_cancel_calls = []
+        self._next_after_id = 0
         self.bell_calls = 0
         self.attribute_calls = []
         self.wm_attribute_calls = []
@@ -102,7 +104,12 @@ class FakeRoot:
         self.current_geom = current_geom
 
     def after(self, delay, callback):
+        self._next_after_id += 1
         self.after_calls.append((delay, callback))
+        return self._next_after_id
+
+    def after_cancel(self, after_id):
+        self.after_cancel_calls.append(after_id)
 
     def bell(self):
         self.bell_calls += 1
@@ -151,6 +158,48 @@ class FakeEntry(FakeWidget):
 
     def delete(self, start, end):
         self.text = ""
+
+
+class FakeStringVar:
+    def __init__(self, value=""):
+        self._value = value
+
+    def set(self, value):
+        self._value = value
+
+    def get(self):
+        return self._value
+
+
+class ImmediateThread:
+    """Runs the target synchronously, standing in for threading.Thread in tests."""
+
+    def __init__(self, target=None, daemon=None):
+        self._target = target
+
+    def start(self):
+        self._target()
+
+
+def fake_json_bin_client(remote_todos=None, load_exc=None, save_exc=None, saved_holder=None):
+    class FakeJsonBinClient:
+        def __init__(self, bin_id, access_key):
+            self.bin_id = bin_id
+            self.access_key = access_key
+
+        def load(self):
+            if load_exc is not None:
+                raise load_exc
+            return remote_todos if remote_todos is not None else []
+
+        def save(self, items):
+            if save_exc is not None:
+                raise save_exc
+            if saved_holder is not None:
+                saved_holder.append(items)
+            return items
+
+    return FakeJsonBinClient
 
 
 def get_test_app(tmp_path):
@@ -717,6 +766,8 @@ def test_add_todo_item(tmp_path, monkeypatch):
     assert len(saved_todos) == 1
     assert saved_todos[0]["text"] == "Buy groceries"
 
+    assert app.root.after_calls[-1] == (2500, app._run_scheduled_todo_sync)
+
 
 def test_toggle_todo_status(tmp_path, monkeypatch):
     app = get_test_app(tmp_path)
@@ -731,6 +782,8 @@ def test_toggle_todo_status(tmp_path, monkeypatch):
 
     saved_todos = json.loads(app.storage.todos_file.read_text(encoding="utf-8"))
     assert saved_todos[0]["done"] is True
+
+    assert app.root.after_calls[-1] == (2500, app._run_scheduled_todo_sync)
 
 
 def test_delete_todo_item(tmp_path, monkeypatch):
@@ -752,3 +805,146 @@ def test_delete_todo_item(tmp_path, monkeypatch):
     saved_todos = json.loads(app.storage.todos_file.read_text(encoding="utf-8"))
     assert len(saved_todos) == 2
     assert saved_todos[0]["deleted"] is True
+
+    assert app.root.after_calls[-1] == (2500, app._run_scheduled_todo_sync)
+
+
+def test_sync_todos_without_credentials_sets_status(tmp_path, monkeypatch):
+    app = get_test_app(tmp_path)
+    app.todo_sync_status_var = FakeStringVar()
+    app.settings["jsonbin_bin_id"] = ""
+    app.settings["jsonbin_access_key"] = ""
+
+    client_constructed = []
+    monkeypatch.setattr(pomodoro, "JsonBinClient", lambda *a, **k: client_constructed.append(True))
+
+    app.sync_todos()
+
+    assert app.todo_sync_status_var.get() == "Sync not configured"
+    assert client_constructed == []
+
+
+def test_sync_todos_success_merges_and_updates_status(tmp_path, monkeypatch):
+    app = get_test_app(tmp_path)
+    monkeypatch.setattr(app, "render_todos", lambda: None)
+    app.todo_sync_status_var = FakeStringVar()
+    app.settings["jsonbin_bin_id"] = "bin123"
+    app.settings["jsonbin_access_key"] = "key123"
+
+    local_todo = {"id": 1, "text": "Local", "done": False, "updated_at": "2020-01-01T00:00:00"}
+    remote_todo = {"id": 2, "text": "Remote", "done": False, "updated_at": "2020-01-02T00:00:00"}
+    app.storage.todos = [local_todo]
+
+    saved_calls = []
+    monkeypatch.setattr(pomodoro.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(
+        pomodoro, "JsonBinClient", fake_json_bin_client(remote_todos=[remote_todo], saved_holder=saved_calls)
+    )
+
+    app.sync_todos()
+    app.root.after_calls[-1][1]()
+
+    assert {t["id"] for t in app.storage.todos} == {1, 2}
+    assert saved_calls and {t["id"] for t in saved_calls[0]} == {1, 2}
+    assert app.todo_sync_status_var.get().startswith("Synced at ")
+
+    saved_todos = json.loads(app.storage.todos_file.read_text(encoding="utf-8"))
+    assert {t["id"] for t in saved_todos} == {1, 2}
+
+
+def test_sync_todos_failure_keeps_local_todos_and_sets_status(tmp_path, monkeypatch):
+    app = get_test_app(tmp_path)
+    app.todo_sync_status_var = FakeStringVar()
+    app.settings["jsonbin_bin_id"] = "bin123"
+    app.settings["jsonbin_access_key"] = "key123"
+
+    original_todos = [{"id": 1, "text": "Local", "done": False}]
+    app.storage.todos = original_todos
+
+    monkeypatch.setattr(pomodoro.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(
+        pomodoro,
+        "JsonBinClient",
+        fake_json_bin_client(load_exc=pomodoro.requests.ConnectionError("boom")),
+    )
+
+    app.sync_todos()
+    app.root.after_calls[-1][1]()
+
+    assert app.storage.todos == original_todos
+    assert app.todo_sync_status_var.get() == "Sync failed: boom"
+
+
+def test_sync_todos_queues_resync_when_already_in_progress(tmp_path, monkeypatch):
+    app = get_test_app(tmp_path)
+    app.todo_sync_status_var = FakeStringVar()
+    app.settings["jsonbin_bin_id"] = "bin123"
+    app.settings["jsonbin_access_key"] = "key123"
+    app._sync_in_progress = True
+
+    client_constructed = []
+    monkeypatch.setattr(pomodoro, "JsonBinClient", lambda *a, **k: client_constructed.append(True))
+
+    app.sync_todos()
+
+    assert client_constructed == []
+    assert app.todo_sync_status_var.get() == ""
+    assert app._sync_resync_pending is True
+
+
+def test_on_sync_done_triggers_queued_resync(tmp_path, monkeypatch):
+    app = get_test_app(tmp_path)
+    monkeypatch.setattr(app, "render_todos", lambda: None)
+    app.todo_sync_status_var = FakeStringVar()
+    app.settings["jsonbin_bin_id"] = "bin123"
+    app.settings["jsonbin_access_key"] = "key123"
+
+    saved_calls = []
+    monkeypatch.setattr(pomodoro.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(pomodoro, "JsonBinClient", fake_json_bin_client(remote_todos=[], saved_holder=saved_calls))
+
+    app._sync_resync_pending = True
+    app._on_sync_done([{"id": 1, "text": "Task", "done": False}], None)
+
+    # _on_sync_done saw the pending flag and started a fresh sync_todos() call,
+    # which (via ImmediateThread) ran synchronously and scheduled its own
+    # completion callback.
+    assert app._sync_resync_pending is False
+    assert len(saved_calls) == 1
+
+    app.root.after_calls[-1][1]()
+    assert app.todo_sync_status_var.get().startswith("Synced at ")
+
+
+def test_schedule_todo_sync_debounces_repeated_calls(tmp_path):
+    app = get_test_app(tmp_path)
+
+    app._schedule_todo_sync()
+    first_id = app._todo_sync_after_id
+    assert app.root.after_calls == [(2500, app._run_scheduled_todo_sync)]
+    assert app.root.after_cancel_calls == []
+
+    app._schedule_todo_sync()
+
+    assert app.root.after_cancel_calls == [first_id]
+    assert len(app.root.after_calls) == 2
+
+
+def test_on_sync_done_after_todos_window_closed_does_not_touch_widgets(tmp_path, monkeypatch):
+    app = get_test_app(tmp_path)
+
+    def boom():
+        raise AssertionError("render_todos should not run once the Todos window is closed")
+
+    monkeypatch.setattr(app, "render_todos", boom)
+
+    # Simulates on_todos_close having already run before this sync's background
+    # thread reports back (the race that used to crash with a Tcl "bad window
+    # path name" error).
+    app.todo_list_frame = None
+    app.todo_sync_status_var = None
+    app.todo_sync_status_lbl = None
+
+    app._on_sync_done([{"id": 1, "text": "Task", "done": False}], None)
+
+    assert app.storage.todos == [{"id": 1, "text": "Task", "done": False}]

@@ -105,7 +105,13 @@ Settings (`settings.json`) and session statistics (`history.json`) are stored in
 - **macOS & Linux**: `~/.config/pomodoro-timer/`
 
 ## Todo Sync (JSONBin)
-Todos can be synced across devices using [JSONBin](https://jsonbin.io) as free cloud storage. The Sync button in the Todos window pulls the remote list, merges it with your local todos (the most recently edited version of each item wins), pushes the merged result back, and saves it locally.
+Todos can be synced across devices using [JSONBin](https://jsonbin.io) as free cloud storage. Sync pulls the remote list, merges it with your local todos (the most recently edited version of each item wins), pushes the merged result back, and saves it locally — all in a background thread so the UI never freezes.
+
+Sync runs automatically:
+- When the Todos window opens (pulling in anything changed elsewhere) and again when it closes (pushing anything you just changed).
+- ~2.5 seconds after you add, edit, complete, or delete a todo, so changes go out even if you never close the window — the timer resets on every new change so a burst of edits only triggers one sync, not one per action.
+
+A **Sync** button is still there if you want to force a sync immediately — e.g. to pull in a change from another device without waiting. A small status line under the title shows the result ("Syncing…", "Synced at 14:32:10", or "Sync failed: …"). If a change comes in while a sync is already in flight, it's queued and synced right after the current one finishes rather than being dropped.
 
 ### 1. Create a bin
 JSONBin doesn't allow creating an empty bin, so seed it with a sample todo — the app will overwrite it on the first sync anyway:
@@ -138,7 +144,7 @@ Don't use your account's **X-Master-Key** in the app — it grants full access t
 3. Click **Save Settings**.
 
 ### 4. Sync
-Open the **Todos** window and click **Sync**. The first sync will pull in the "Sample todo" from step 1 — just delete it once, and that deletion will sync to every device from then on. Repeat on each device using the same Bin ID and Access Key to keep todos in sync.
+Open the **Todos** window — it syncs automatically. The first sync will pull in the "Sample todo" from step 1 — just delete it once, and that deletion will sync to every device from then on. Repeat the setup on each device using the same Bin ID and Access Key to keep todos in sync.
 
 **Note:** merging is based on an `updated_at` timestamp per todo, not real-time collaboration — for the same todo edited on two devices before either syncs, the most recently edited (or deleted) version wins.
 

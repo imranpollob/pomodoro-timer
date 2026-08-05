@@ -15,6 +15,7 @@ if sys.platform == "darwin":
 import tkinter as tk
 import ttkbootstrap as tb
 import os
+import threading
 import tomllib
 import requests
 from datetime import datetime, date
@@ -140,6 +141,11 @@ class PomodoroApp:
         self.todo_entry = None
         self.todo_list_frame = None
         self.todo_list_canvas = None
+        self.todo_sync_status_var = None
+        self.todo_sync_status_lbl = None
+        self._sync_in_progress = False
+        self._sync_resync_pending = False
+        self._todo_sync_after_id = None
 
         self._settings_win = None
         self._todos_win = None
@@ -293,6 +299,12 @@ class PomodoroApp:
         )
         self.todo_sync_btn.pack(side="right")
 
+        self.todo_sync_status_var = tk.StringVar(value="")
+        self.todo_sync_status_lbl = tb.Label(
+            todos_win, textvariable=self.todo_sync_status_var, font=(FONT_FAMILY, 9, "bold"), bootstyle="info"
+        )
+        self.todo_sync_status_lbl.pack(anchor="e", padx=5)
+
         input_frame = tb.Frame(todos_win)
         input_frame.pack(fill="x", pady=2, padx=5)
 
@@ -356,13 +368,21 @@ class PomodoroApp:
         self.todo_list_canvas.bind("<Leave>", unbind_mousewheel)
 
         def on_todos_close():
+            if self._todo_sync_after_id is not None:
+                self.root.after_cancel(self._todo_sync_after_id)
+                self._todo_sync_after_id = None
+            self.sync_todos()
             self._todos_win = None
+            self.todo_sync_status_var = None
+            self.todo_sync_status_lbl = None
+            self.todo_list_frame = None
             todos_win.destroy()
 
         todos_win.protocol("WM_DELETE_WINDOW", on_todos_close)
 
         self.render_todos()
         self.todo_entry.focus_set()
+        self.sync_todos()
 
     def render_todos(self):
         if self.todo_list_frame is None:
@@ -394,6 +414,7 @@ class PomodoroApp:
                         t["text"] = new_text
                         t["updated_at"] = datetime.now().isoformat()
                         self.storage.save_todos()
+                        self._schedule_todo_sync()
                     self.editing_todo_ids.discard(t["id"])
                     self.render_todos()
 
@@ -488,12 +509,14 @@ class PomodoroApp:
             self.storage.save_todos()
             self.todo_entry.delete(0, tk.END)
             self.render_todos()
+            self._schedule_todo_sync()
 
     def toggle_todo_status(self, todo, is_done):
         todo["done"] = is_done
         todo["updated_at"] = datetime.now().isoformat()
         self.storage.save_todos()
         self.render_todos()
+        self._schedule_todo_sync()
 
     def start_edit(self, todo_id):
         self.editing_todo_ids.add(todo_id)
@@ -505,45 +528,73 @@ class PomodoroApp:
             todo["updated_at"] = datetime.now().isoformat()
             self.storage.save_todos()
             self.render_todos()
+            self._schedule_todo_sync()
 
     def sync_todos(self):
-        from tkinter import messagebox
+        if self._sync_in_progress:
+            self._sync_resync_pending = True
+            return
 
         bin_id = self.settings.get("jsonbin_bin_id", "").strip()
         access_key = self.settings.get("jsonbin_access_key", "").strip()
-        parent = self._todos_win
 
         if not bin_id or not access_key:
-            messagebox.showwarning(
-                "Sync",
-                "Please set your JSONBin Bin ID and Access Key in Settings first.",
-                parent=parent,
-            )
+            self._set_sync_status("Sync not configured", "secondary")
             return
 
+        self._sync_in_progress = True
+        self._sync_resync_pending = False
+        self._set_sync_status("Syncing…", "info")
+
+        local_snapshot = [dict(t) for t in self.storage.todos]
         client = JsonBinClient(bin_id, access_key)
 
-        try:
-            remote_todos = client.load()
-        except (requests.RequestException, ValueError) as e:
-            messagebox.showerror("Sync Failed", f"Could not download todos: {e}", parent=parent)
+        def worker():
+            try:
+                remote_todos = client.load()
+                merged = merge_todos(local_snapshot, remote_todos)
+                merged = purge_old_tombstones(merged)
+                client.save(merged)
+            except (requests.RequestException, ValueError) as e:
+                error = str(e)
+                self.root.after(0, lambda: self._on_sync_done(None, error))
+                return
+            self.root.after(0, lambda: self._on_sync_done(merged, None))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_sync_done(self, merged, error):
+        self._sync_in_progress = False
+
+        if error is not None:
+            self._set_sync_status(f"Sync failed: {error}", "danger")
+        else:
+            self.storage.todos = merged
+            self.storage.save_todos()
+            if self.todo_list_frame is not None:
+                self.render_todos()
+            self._set_sync_status(f"Synced at {datetime.now().strftime('%H:%M:%S')}", "success")
+
+        if self._sync_resync_pending:
+            self._sync_resync_pending = False
+            self.sync_todos()
+
+    def _set_sync_status(self, text, style="secondary"):
+        if self.todo_sync_status_var is not None:
+            self.todo_sync_status_var.set(text)
+        if self.todo_sync_status_lbl is not None:
+            self.todo_sync_status_lbl.configure(bootstyle=style)
+
+    def _schedule_todo_sync(self, delay_ms=2500):
+        if self.root is None:
             return
+        if self._todo_sync_after_id is not None:
+            self.root.after_cancel(self._todo_sync_after_id)
+        self._todo_sync_after_id = self.root.after(delay_ms, self._run_scheduled_todo_sync)
 
-        merged = merge_todos(self.storage.todos, remote_todos)
-        merged = purge_old_tombstones(merged)
-
-        try:
-            client.save(merged)
-        except requests.RequestException as e:
-            messagebox.showerror(
-                "Sync Failed", f"Merged locally but could not upload to JSONBin: {e}", parent=parent
-            )
-            return
-
-        self.storage.todos = merged
-        self.storage.save_todos()
-        self.render_todos()
-        messagebox.showinfo("Sync", "Todos synced successfully.", parent=parent)
+    def _run_scheduled_todo_sync(self):
+        self._todo_sync_after_id = None
+        self.sync_todos()
 
     def on_focus_in(self, event):
         if event.widget == self.root:
@@ -628,7 +679,7 @@ class PomodoroApp:
             )
 
         tb.Label(
-            settings_win, text="JSONBin Sync", font=(FONT_FAMILY, 10, "bold"), bootstyle="primary"
+            settings_win, text="JSONBin.io Sync", font=(FONT_FAMILY, 10, "bold"), bootstyle="primary"
         ).pack(anchor="w", padx=20, pady=(10, 0))
 
         bin_id_frame = tb.Frame(settings_win)
