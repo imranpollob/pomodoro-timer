@@ -1,4 +1,6 @@
-# Implementation planning
+# Implementation
+
+See the [implementation log](implementation-log.md) for completed stabilization changes, test results, remaining platform gates, and the next batch.
 
 See [the implementation plan](implementation-plan.md) for the roadmap, delivery gates, migration design, and product concepts.
 

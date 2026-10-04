@@ -6,7 +6,7 @@ Prepared October 4, 2026. Based on the [project review](../research/project-revi
 
 **Proposed stack:** Tauri 2 + Rust + Svelte/TypeScript + SQLite. This is the planning default, subject to a packaged platform prototype. If a mandatory capability fails, implement an adapter or evaluate PySide6/Qt before proceeding. Do not drop an OS to make the rebuild easier.
 
-This document defines work to perform; checkboxes are initially incomplete. Existing application code has not been rebuilt by this planning task.
+Implementation has started with the M0 stabilization batch in the existing Python app. M0.1–M0.7 are implemented and verified locally on Windows; the three-OS CI workflow is authored but has not run remotely. The replacement UI and Tauri workspace are still planned. See the [implementation log](implementation-log.md) for changes, validation evidence, and remaining gates.
 
 ## 1. Approximate final product
 
@@ -78,16 +78,18 @@ Total initial range: **50–79 developer-days**, about **10–16 full-time worki
 
 Keep `src/`, the current tests, and current packaging working while the new app is developed separately.
 
-- [ ] M0.1 Turn the seven research reproductions into isolated regression tests asserting desired behavior. Keep the research probes as historical evidence; they intentionally assert current failures.
-- [ ] M0.2 Track one timer callback ID; cancel it on pause/stop/mode change/close; reject stale generations. Introduce a UI-independent timing model using monotonic elapsed duration for countdown and stopwatch.
-- [ ] M0.3 Snapshot duration/cycle configuration when a session starts. Validate positive durations and a positive long-break interval, including values loaded from disk; show useful validation feedback.
-- [ ] M0.4 Write JSON through a same-directory temporary file and atomic replacement, with flush/fsync where supported, explicit errors, and last-known-good backup. Preserve malformed originals before recovery.
-- [ ] M0.5 Merge sync results against current local revisions, preserve edits that occurred during requests, and normalize timestamps. Validate every task object, use stable new IDs, and surface worker errors through a main-thread result queue.
-- [ ] M0.6 Stop time-only tombstone purging. Preserve deletion knowledge. Document that whole-bin GET/PUT still cannot ensure cross-device consistency; do not claim the bridge fix is the final sync protocol.
-- [ ] M0.7 Prevent conflicting application instances or writes. Preserve existing data paths and configuration behavior.
+- [x] M0.1 Turn the seven research reproductions into isolated regression tests asserting desired behavior. Keep the research probes as historical evidence; they intentionally assert the original failures.
+- [x] M0.2 Track one timer callback ID; cancel it on pause/stop/mode change/close; reject stale generations. Introduce a UI-independent timing model using monotonic elapsed duration for countdown and stopwatch.
+- [x] M0.3 Snapshot duration/cycle configuration when a session starts. Validate positive durations and a positive long-break interval, including values loaded from disk; show useful validation feedback.
+- [x] M0.4 Write JSON through a same-directory temporary file and atomic replacement, with flush/fsync where supported, explicit errors, and last-known-good backup. Preserve malformed originals before recovery.
+- [x] M0.5 Merge sync results against current local revisions, preserve edits that occurred during requests, and normalize timestamps. Validate every task object, use stable new IDs, and surface worker errors through a main-thread result queue.
+- [x] M0.6 Stop time-only tombstone purging. Preserve deletion knowledge. Document that whole-bin GET/PUT still cannot ensure cross-device consistency; do not claim the bridge fix is the final sync protocol.
+- [x] M0.7 Prevent conflicting application instances or writes. Preserve existing data paths and configuration behavior.
 - [ ] M0.8 Add PR CI for locked dependencies and pytest on all three OSs; retain Linux installed-app smoke testing and add feasible Windows/macOS launch checks.
 
 **Exit:** existing behavior remains covered; rapid pause/resume, in-flight edits, malformed history, invalid settings, timezone-aware timestamps, and offline deletion cases pass regression tests. Failed writes remain visible and leave recoverable data. Record baseline startup, history timings, and total process-tree resource use.
+
+**Current gate status:** 101 tests and native Tk/packaged-startup smoke checks pass locally on Windows. M0.8 awaits successful Windows/macOS/Linux CI runs. Post-change performance measurements and the three-OS results remain required before closing M0.
 
 ### M1 — Prove the stack and establish the product contract
 

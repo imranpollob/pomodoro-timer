@@ -28,6 +28,17 @@ DEFAULT_SETTINGS = {
 }
 
 
+class FakeClock:
+    def __init__(self):
+        self.value = 100.0
+
+    def __call__(self):
+        return self.value
+
+    def advance(self, seconds):
+        self.value += seconds
+
+
 class FakeWidget:
     def __init__(self):
         self.config_calls = []
@@ -91,6 +102,7 @@ class FakeRoot:
     def __init__(self, current_geom="290x290+100+100"):
         self.after_calls = []
         self.after_cancel_calls = []
+        self.active_after = {}
         self._next_after_id = 0
         self.bell_calls = 0
         self.attribute_calls = []
@@ -106,10 +118,12 @@ class FakeRoot:
     def after(self, delay, callback):
         self._next_after_id += 1
         self.after_calls.append((delay, callback))
+        self.active_after[self._next_after_id] = callback
         return self._next_after_id
 
     def after_cancel(self, after_id):
         self.after_cancel_calls.append(after_id)
+        self.active_after.pop(after_id, None)
 
     def bell(self):
         self.bell_calls += 1
@@ -210,7 +224,9 @@ def get_test_app(tmp_path):
     )
     storage.settings = DEFAULT_SETTINGS.copy()
 
-    app = PomodoroApp(storage, headless=True)
+    clock = FakeClock()
+    app = PomodoroApp(storage, headless=True, clock=clock)
+    app.clock = clock
     app.root = FakeRoot()
     app.mode_label = FakeWidget()
     app.timer_label = FakeWidget()
@@ -344,212 +360,127 @@ def test_set_mode_stopwatch_resets_to_zero(tmp_path):
     assert app.timer_label.config_calls[-1] == {"text": "00:00"}
 
 
-def test_update_timer_countdown_schedules_next_tick(tmp_path):
+def test_update_timer_countdown_uses_elapsed_time(tmp_path):
     app = get_test_app(tmp_path)
-    app.timer_running = True
-    app.current_mode = "Work"
-    app.pomodoro_time = 120
-
+    app.settings["work_time"] = 2
+    app.start_pomodoro()
+    assert app.timer_label.cget("text") == "02:00"
+    app.clock.advance(5)
     app.update_timer()
+    assert app.pomodoro_time == 115
+    assert app.timer_label.cget("text") == "01:55"
+    assert len(app.root.active_after) == 1
 
-    assert app.timer_label.config_calls[-1] == {"text": "02:00"}
-    assert app.pomodoro_time == 119
-    assert app.root.after_calls == [(1000, app.update_timer)]
 
-
-def test_update_timer_stopwatch_increments_and_schedules_next_tick(tmp_path):
+def test_update_timer_stopwatch_uses_elapsed_time(tmp_path):
     app = get_test_app(tmp_path)
-    app.timer_running = True
-    app.current_mode = "Stopwatch"
-    app.pomodoro_time = 5
-
+    app.set_mode("Stopwatch")
+    app.start_pomodoro()
+    app.clock.advance(5)
     app.update_timer()
-
-    assert app.timer_label.config_calls[-1] == {"text": "00:05"}
-    assert app.pomodoro_time == 6
-    assert app.root.after_calls == [(1000, app.update_timer)]
+    assert app.timer_label.cget("text") == "00:05"
+    assert app.pomodoro_time == 5
+    assert len(app.root.active_after) == 1
 
 
 def test_update_timer_work_completion_moves_to_short_break(tmp_path, monkeypatch):
     app = get_test_app(tmp_path)
-    app.timer_running = True
-    app.current_mode = "Work"
-    app.pomodoro_time = 0
     monkeypatch.setattr(pomodoro.sys, "platform", "win32")
-
-    modes = []
-    monkeypatch.setattr(app, "set_mode", lambda mode: modes.append(mode))
-
+    app.start_pomodoro()
+    app.clock.advance(25 * 60)
     app.update_timer()
-
     assert app.timer_running is False
     assert app.completed_pomodoros == 1
-    assert modes == ["Short Break"]
+    assert app.current_mode == "Short Break"
     assert app.root.bell_calls == 1
-    assert app.start_btn.config_calls[-1] == {
-        "text": "Start",
-        "command": app.start_pomodoro,
-        "bootstyle": "primary",
-    }
-    assert all(
-        child.states[-1] == {"state": "normal"}
-        for child in app.mode_frame.children
-    )
+    assert app.start_btn.cget("text") == "Start"
+    assert all(child.states[-1] == {"state": "normal"} for child in app.mode_frame.children)
+    assert app.storage.load_history()[0]["duration_seconds"] == 1500
 
 
-def test_update_timer_work_completion_moves_to_long_break(tmp_path, monkeypatch):
+def test_update_timer_work_completion_moves_to_long_break(tmp_path):
     app = get_test_app(tmp_path)
-    app.timer_running = True
-    app.current_mode = "Work"
-    app.pomodoro_time = 0
     app.completed_pomodoros = 3
-
-    modes = []
-    monkeypatch.setattr(app, "set_mode", lambda mode: modes.append(mode))
-
+    app.start_pomodoro()
+    app.clock.advance(1500)
     app.update_timer()
-
     assert app.completed_pomodoros == 4
-    assert modes == ["Long Break"]
+    assert app.current_mode == "Long Break"
 
 
-def test_update_timer_long_break_completion_resets_cycle(tmp_path, monkeypatch):
+def test_update_timer_long_break_completion_resets_cycle(tmp_path):
     app = get_test_app(tmp_path)
-    app.timer_running = True
-    app.current_mode = "Long Break"
-    app.pomodoro_time = 0
+    app.set_mode("Long Break")
     app.completed_pomodoros = 4
-
-    modes = []
-    monkeypatch.setattr(app, "set_mode", lambda mode: modes.append(mode))
-
+    app.start_pomodoro()
+    app.clock.advance(15 * 60)
     app.update_timer()
-
     assert app.completed_pomodoros == 0
-    assert modes == ["Work"]
+    assert app.current_mode == "Work"
+    assert app.storage.load_history()[0]["type"] == "Long Break"
 
 
 def test_stop_pomodoro_logs_work_session(tmp_path):
     app = get_test_app(tmp_path)
-    app.timer_running = True
-    app.current_mode = "Work"
-    app.settings["work_time"] = 25
-    app.pomodoro_time = 15 * 60
-
+    app.start_pomodoro()
+    app.clock.advance(10 * 60)
     app.stop_pomodoro()
-
     assert app.timer_running is False
     history = app.storage.load_history()
     assert len(history) == 1
     assert history[0]["type"] == "Work"
-    assert history[0]["duration_seconds"] == 10 * 60
+    assert history[0]["duration_seconds"] == 600
 
 
 def test_on_close_logs_running_work_session(tmp_path):
     app = get_test_app(tmp_path)
-    app.timer_running = True
-    app.current_mode = "Work"
-    app.settings["work_time"] = 25
-    app.pomodoro_time = 20 * 60
-
+    app.start_pomodoro()
+    app.clock.advance(5 * 60)
     app.on_close()
-
     history = app.storage.load_history()
     assert len(history) == 1
-    assert history[0]["type"] == "Work"
-    assert history[0]["duration_seconds"] == 5 * 60
+    assert history[0]["duration_seconds"] == 300
     assert app.timer_running is False
     assert app.root.destroy_calls == 1
 
 
-def test_stop_pomodoro_logs_stopwatch_session(tmp_path, monkeypatch):
+def test_stop_pomodoro_logs_stopwatch_session(tmp_path):
     app = get_test_app(tmp_path)
-    app.timer_running = True
-    app.current_mode = "Stopwatch"
-
-    from datetime import datetime, timedelta
-    start_time = datetime.now()
-    app.stopwatch_start_time = start_time
-
-    class MockDateTime:
-        @classmethod
-        def now(cls):
-            return start_time + timedelta(seconds=30)
-    monkeypatch.setattr(pomodoro, "datetime", MockDateTime)
-
+    app.set_mode("Stopwatch")
+    app.start_pomodoro()
+    app.clock.advance(30)
     app.stop_pomodoro()
-
-    assert app.timer_running is False
     history = app.storage.load_history()
     assert len(history) == 1
     assert history[0]["type"] == "Stopwatch"
     assert history[0]["duration_seconds"] == 30
 
 
-def test_on_close_logs_running_stopwatch_session(tmp_path, monkeypatch):
+def test_on_close_logs_running_stopwatch_session(tmp_path):
     app = get_test_app(tmp_path)
-    app.timer_running = True
-    app.current_mode = "Stopwatch"
-
-    from datetime import datetime, timedelta
-    start_time = datetime.now()
-    app.stopwatch_start_time = start_time
-
-    class MockDateTime:
-        @classmethod
-        def now(cls):
-            return start_time + timedelta(seconds=45)
-    monkeypatch.setattr(pomodoro, "datetime", MockDateTime)
-
+    app.set_mode("Stopwatch")
+    app.start_pomodoro()
+    app.clock.advance(45)
     app.on_close()
-
     history = app.storage.load_history()
     assert len(history) == 1
-    assert history[0]["type"] == "Stopwatch"
     assert history[0]["duration_seconds"] == 45
-    assert app.timer_running is False
     assert app.root.destroy_calls == 1
 
 
-def test_stop_pomodoro_logs_stopwatch_session_with_pauses(tmp_path, monkeypatch):
+def test_stop_pomodoro_logs_stopwatch_session_with_pauses(tmp_path):
     app = get_test_app(tmp_path)
-    app.timer_running = True
-    app.current_mode = "Stopwatch"
-
-    from datetime import datetime, timedelta
-    start_time = datetime.now()
-    app.stopwatch_start_time = start_time
-
-    current_time = start_time + timedelta(seconds=20)
-
-    class MockDateTime1:
-        @classmethod
-        def now(cls):
-            return current_time
-
-    monkeypatch.setattr(pomodoro, "datetime", MockDateTime1)
+    app.set_mode("Stopwatch")
+    app.start_pomodoro()
+    app.clock.advance(20)
     app.pause_pomodoro()
-
-    assert app.stopwatch_accumulated_seconds == 20
-    assert app.stopwatch_start_time is None
-
+    app.clock.advance(300)
+    assert app._timer.active_seconds == 20
     app.continue_pomodoro()
-    assert app.stopwatch_start_time == current_time
-
-    current_time = current_time + timedelta(seconds=15)
-
-    class MockDateTime2:
-        @classmethod
-        def now(cls):
-            return current_time
-
-    monkeypatch.setattr(pomodoro, "datetime", MockDateTime2)
+    app.clock.advance(15)
     app.stop_pomodoro()
-
-    assert app.timer_running is False
     history = app.storage.load_history()
     assert len(history) == 1
-    assert history[0]["type"] == "Stopwatch"
     assert history[0]["duration_seconds"] == 35
 
 
@@ -589,13 +520,13 @@ def test_set_mode_break_hides_stop_btn(tmp_path):
 
 
 def test_log_session_ignores_short_sessions(tmp_path):
-    storage = StorageManager(history_file=tmp_path / "history.json")
+    storage = StorageManager(settings_file=tmp_path / "settings.json", todos_file=tmp_path / "todos.json", history_file=tmp_path / "history.json")
     storage.log_session("Work", 5)
     assert not (tmp_path / "history.json").exists()
 
 
 def test_log_session_appends_to_history(tmp_path):
-    storage = StorageManager(history_file=tmp_path / "history.json")
+    storage = StorageManager(settings_file=tmp_path / "settings.json", todos_file=tmp_path / "todos.json", history_file=tmp_path / "history.json")
     storage.log_session("Work", 15 * 60)
     storage.log_session("Stopwatch", 30)
 
@@ -662,24 +593,18 @@ def test_minimize_timer_restores_controls_when_completed(tmp_path):
 
 def test_update_timer_auto_minimizes_when_done(tmp_path, monkeypatch):
     app = get_test_app(tmp_path)
-    app.timer_running = True
-    app.current_mode = "Work"
-    app.pomodoro_time = 0
+    app.start_pomodoro()
     app.is_maximized = True
-    monkeypatch.setattr(pomodoro.sys, "platform", "win32")
-
     minimizes = []
     monkeypatch.setattr(app, "minimize_timer", lambda: minimizes.append(True))
-    monkeypatch.setattr(app, "set_mode", lambda mode: None)
-
+    app.clock.advance(1500)
     app.update_timer()
-
     assert app.timer_running is False
     assert minimizes == [True]
 
 
 def test_reset_today_stats_removes_only_todays_entries(tmp_path):
-    storage = StorageManager(history_file=tmp_path / "history.json")
+    storage = StorageManager(settings_file=tmp_path / "settings.json", todos_file=tmp_path / "todos.json", history_file=tmp_path / "history.json")
 
     from datetime import date, timedelta
     today = date.today().isoformat()

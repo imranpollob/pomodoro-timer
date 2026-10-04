@@ -1,6 +1,6 @@
 # Implementation backlog
 
-Execution companion to [implementation-plan.md](implementation-plan.md). The milestone checkboxes in that plan are the source of completion status. All work below is currently planned. This file groups tasks into reviewable change sets and provides issue-ready scope for the first batch.
+Execution companion to [implementation-plan.md](implementation-plan.md). The milestone checkboxes in that plan are the source of completion status. B01–B03 are implemented and verified locally on Windows. B04's code and CI workflow are implemented; the three-OS CI results are pending. Remaining batches are planned. See the [implementation log](implementation-log.md) for evidence and limits. This file groups tasks into reviewable change sets.
 
 ## First batch: stabilize timer and data
 

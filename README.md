@@ -152,14 +152,26 @@ git push origin "v${VERSION}"
 Pushing the tag triggers the `Release` GitHub Actions workflow, which builds Linux, Windows, and macOS packages and attaches them to a new GitHub Release. Use `uv version --bump minor` or `uv version --bump major` instead when appropriate.
 
 ### Configuration Files
-Settings (`settings.json`) and session statistics (`history.json`) are stored in the user profile directory:
+Settings (`settings.json`), tasks (`todos.json`), and session statistics (`history.json`) are stored in the user profile directory:
 - **Windows**: `%APPDATA%\pomodoro-timer\` (e.g., `C:\Users\<username>\AppData\Roaming\pomodoro-timer\`)
 - **macOS & Linux**: `~/.config/pomodoro-timer/`
 
+Set `POMODORO_DATA_DIR` before launching to use an isolated profile, for example when checking a development build. Only one normal app instance may use a profile at a time.
+
+### Save errors and recovery
+
+Writes preserve the previous valid file as a `.json.bak` backup. Unreadable data is not silently replaced; the original stays in place and a `.json.corrupt-<id>` copy is created when possible. Open **Recovery** from the app menu to select and validate a backup for settings, tasks, or history before restoring it.
+
+A failed session save shows **Retry save** and retains the unfinished session in memory. Fix the underlying file/access problem or restore history, then retry before closing. Force-quitting loses an unsaved in-memory session. Back up the profile separately for protection beyond the previous save.
+
 ### Running tests
 ```bash
-uv run pytest
+uv sync --locked
+uv run --locked python -m pytest -q
+uv run --locked python scripts/smoke_app.py
 ```
+
+The GUI smoke uses temporary data and no sync credentials. Headless Linux needs a display such as `xvfb-run --auto-servernum`. PR CI checks Windows, macOS, and Linux, including package launch checks. See the [implementation log](docs/implementation/implementation-log.md) for verified results and remaining gates.
 
 
 ## Icon attribution

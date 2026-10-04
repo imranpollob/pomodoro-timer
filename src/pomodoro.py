@@ -18,10 +18,19 @@ import os
 import threading
 import tomllib
 import requests
+import re
+import queue
+import time
+import uuid
+import shutil
+import subprocess
 from datetime import datetime, date
 from importlib import metadata
-from storage import StorageManager
-from sync import JsonBinClient, merge_todos, purge_old_tombstones
+from storage import CONFIG_DIR, StorageManager, StorageError
+from settings import validate_settings
+from timer import SessionTimer
+from instance import InstanceLock, AlreadyRunning
+from sync import JsonBinClient, merge_todos, reconcile_todos, next_timestamp
 
 FONT_FAMILY = "Helvetica"
 PACKAGE_NAME = "pomodoro-timer"
@@ -112,18 +121,25 @@ def apply_window_icon(window):
 
 class PomodoroApp:
 
-    def __init__(self, storage_manager, headless=False):
+    def __init__(self, storage_manager, headless=False, clock=time.monotonic):
         self.storage = storage_manager
         self.settings = self.storage.settings
+        self._timer = SessionTimer(clock)
+        self._timer_after_id = None
+        self._timer_generation = 0
+        self._session_logged = False
+        self._pending_session_save = False
+        self._closed = False
+        self.last_error = None
+        self.data_status_label = None
 
         self.current_mode = "Work"
         self.completed_pomodoros = 0
         self.timer_running = False
         self.pomodoro_time = 0
-        self.stopwatch_start_time = None
-        self.stopwatch_accumulated_seconds = 0
         self.is_maximized = False
         self.editing_todo_ids = set()
+        self._todo_edit_vars = {}
 
         self.root = None
         self.mode_label = None
@@ -146,6 +162,10 @@ class PomodoroApp:
         self._sync_in_progress = False
         self._sync_resync_pending = False
         self._todo_sync_after_id = None
+        self._sync_poll_after_id = None
+        self._sync_results = queue.Queue()
+        self._sync_stop_event = threading.Event()
+        self._sync_generation = 0
 
         self._settings_win = None
         self._todos_win = None
@@ -170,8 +190,8 @@ class PomodoroApp:
 
         def on_mode_change(*args):
             if not self.timer_running:
-                self.settings["timer_mode"] = self.mode_var.get()
-                self.storage.save_settings()
+                if not self.apply_settings({"timer_mode": self.mode_var.get()}):
+                    return
                 if self.settings["timer_mode"] == "Stopwatch":
                     self.set_mode("Stopwatch")
                 else:
@@ -242,6 +262,9 @@ class PomodoroApp:
             self.set_mode("Work")
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.data_status_label = tb.Label(self.root, text="", bootstyle="danger", wraplength=270)
+        if self.storage.errors:
+            self._show_storage_error(StorageError(next(iter(self.storage.errors.values()))))
 
     def build_menu(self, window, exclude=None):
         exclude = exclude or set()
@@ -249,6 +272,7 @@ class PomodoroApp:
             ("Settings", self.open_settings_dialog),
             ("Todos",    self.open_todos_dialog),
             ("Report",   self.open_report_dialog),
+            ("Recovery", self.open_recovery_dialog),
             ("Font +",   self.increase_font),
             ("Font -",   self.decrease_font),
         ]
@@ -268,12 +292,12 @@ class PomodoroApp:
     def increase_font(self):
         self.settings["label_font_size"] = min(self.settings["label_font_size"] + 2, 72)
         self.timer_label.configure(font=(FONT_FAMILY, self.settings["label_font_size"], "bold"))
-        self.storage.save_settings()
+        self._save_settings()
 
     def decrease_font(self):
         self.settings["label_font_size"] = max(self.settings["label_font_size"] - 2, 8)
         self.timer_label.configure(font=(FONT_FAMILY, self.settings["label_font_size"], "bold"))
-        self.storage.save_settings()
+        self._save_settings()
 
     def open_todos_dialog(self):
         if self._todos_win is not None and self._todos_win.winfo_exists():
@@ -400,7 +424,10 @@ class PomodoroApp:
 
             todo_id = todo["id"]
             if todo_id in self.editing_todo_ids:
-                edit_var = tk.StringVar(value=todo["text"])
+                edit_var = self._todo_edit_vars.get(todo_id)
+                if edit_var is None:
+                    edit_var = tk.StringVar(value=todo["text"])
+                    self._todo_edit_vars[todo_id] = edit_var
                 edit_entry = tb.Entry(
                     item_frame,
                     textvariable=edit_var,
@@ -411,11 +438,10 @@ class PomodoroApp:
                 def save_edit(event=None, t=todo, var=edit_var):
                     new_text = var.get().strip()
                     if new_text:
-                        t["text"] = new_text
-                        t["updated_at"] = datetime.now().isoformat()
-                        self.storage.save_todos()
-                        self._schedule_todo_sync()
+                        if not self.edit_todo_item(t["id"], new_text):
+                            return
                     self.editing_todo_ids.discard(t["id"])
+                    self._todo_edit_vars.pop(t["id"], None)
                     self.render_todos()
 
                 edit_entry.bind("<Return>", save_edit)
@@ -494,58 +520,80 @@ class PomodoroApp:
         self.todo_list_frame.update_idletasks()
         self.todo_list_canvas.configure(scrollregion=self.todo_list_canvas.bbox("all"))
 
+    def _save_todos(self, candidate):
+        try:
+            self.storage.save_todos(candidate)
+        except StorageError as exc:
+            self._show_storage_error(exc)
+            self._set_sync_status("Not saved on this device", "danger")
+            return False
+        self._clear_storage_error()
+        self._schedule_todo_sync()
+        return True
+
     def add_todo_item(self):
         if self.todo_entry is None:
             return
         text = self.todo_entry.get().strip()
         if text:
-            todo_id = int(datetime.now().timestamp() * 1000)
-            self.storage.todos.append({
-                "id": todo_id,
-                "text": text,
-                "done": False,
-                "updated_at": datetime.now().isoformat(),
-            })
-            self.storage.save_todos()
-            self.todo_entry.delete(0, tk.END)
-            self.render_todos()
-            self._schedule_todo_sync()
+            candidate = [dict(t) for t in self.storage.todos]
+            candidate.append({"id": str(uuid.uuid4()), "text": text, "done": False, "updated_at": next_timestamp()})
+            if self._save_todos(candidate):
+                self.todo_entry.delete(0, tk.END)
+                self.render_todos()
+
+    def edit_todo_item(self, todo_id, text):
+        candidate = [dict(t) for t in self.storage.todos]
+        for todo in candidate:
+            if todo["id"] == todo_id:
+                todo["text"] = text
+                todo["updated_at"] = next_timestamp(todo.get("updated_at", ""))
+                return self._save_todos(candidate)
+        return False
 
     def toggle_todo_status(self, todo, is_done):
-        todo["done"] = is_done
-        todo["updated_at"] = datetime.now().isoformat()
-        self.storage.save_todos()
-        self.render_todos()
-        self._schedule_todo_sync()
+        candidate = [dict(t) for t in self.storage.todos]
+        for item in candidate:
+            if item["id"] == todo["id"]:
+                item["done"] = is_done
+                item["updated_at"] = next_timestamp(item.get("updated_at", ""))
+        if self._save_todos(candidate):
+            self.render_todos()
 
     def start_edit(self, todo_id):
         self.editing_todo_ids.add(todo_id)
         self.render_todos()
 
     def delete_todo_item(self, todo):
-        if todo in self.storage.todos:
-            todo["deleted"] = True
-            todo["updated_at"] = datetime.now().isoformat()
-            self.storage.save_todos()
+        candidate = [dict(t) for t in self.storage.todos]
+        for item in candidate:
+            if item["id"] == todo["id"]:
+                item["deleted"] = True
+                item["updated_at"] = next_timestamp(item.get("updated_at", ""))
+        if self._save_todos(candidate):
+            self.editing_todo_ids.discard(todo["id"])
+            self._todo_edit_vars.pop(todo["id"], None)
             self.render_todos()
-            self._schedule_todo_sync()
 
     def sync_todos(self):
+        if self._closed:
+            return
         if self._sync_in_progress:
             self._sync_resync_pending = True
             return
-
+        if "todos" in self.storage.errors:
+            self._set_sync_status("Recover local tasks before syncing", "danger")
+            return
         bin_id = self.settings.get("jsonbin_bin_id", "").strip()
         access_key = self.settings.get("jsonbin_access_key", "").strip()
-
         if not bin_id or not access_key:
             self._set_sync_status("Sync not configured", "secondary")
             return
-
         self._sync_in_progress = True
         self._sync_resync_pending = False
         self._set_sync_status("Syncing…", "info")
-
+        self._sync_generation += 1
+        generation = self._sync_generation
         local_snapshot = [dict(t) for t in self.storage.todos]
         client = JsonBinClient(bin_id, access_key)
 
@@ -553,28 +601,57 @@ class PomodoroApp:
             try:
                 remote_todos = client.load()
                 merged = merge_todos(local_snapshot, remote_todos)
-                merged = purge_old_tombstones(merged)
+                if self._sync_stop_event.is_set():
+                    return
                 client.save(merged)
-            except (requests.RequestException, ValueError) as e:
-                error = str(e)
-                self.root.after(0, lambda: self._on_sync_done(None, error))
-                return
-            self.root.after(0, lambda: self._on_sync_done(merged, None))
+                result = (generation, local_snapshot, merged, None)
+            except Exception as exc:
+                result = (generation, local_snapshot, None, str(exc).replace(access_key, "[redacted]"))
+            # The worker only touches a synchronized queue, never Tk.
+            self._sync_results.put(result)
 
-        threading.Thread(target=worker, daemon=True).start()
+        self._sync_poll_after_id = self.root.after(50, self._poll_sync_results)
+        try:
+            threading.Thread(target=worker, daemon=True).start()
+        except Exception as exc:
+            self._sync_results.put((generation, local_snapshot, None, str(exc)))
 
-    def _on_sync_done(self, merged, error):
+    def _poll_sync_results(self):
+        self._sync_poll_after_id = None
+        if self._closed:
+            return
+        try:
+            generation, snapshot, merged, error = self._sync_results.get_nowait()
+        except queue.Empty:
+            pass
+        else:
+            if generation == self._sync_generation:
+                self._on_sync_done(merged, error, snapshot)
+        if self._sync_in_progress and self._sync_poll_after_id is None:
+            self._sync_poll_after_id = self.root.after(50, self._poll_sync_results)
+
+    def _on_sync_done(self, merged, error, snapshot=None):
+        if self._closed:
+            return
         self._sync_in_progress = False
-
         if error is not None:
             self._set_sync_status(f"Sync failed: {error}", "danger")
         else:
-            self.storage.todos = merged
-            self.storage.save_todos()
-            if self.todo_list_frame is not None:
+            try:
+                if snapshot is None:
+                    candidate = merge_todos(self.storage.todos, merged)
+                    changed = False
+                else:
+                    candidate, changed = reconcile_todos(snapshot, self.storage.todos, merged)
+                self.storage.save_todos(candidate)
+            except (StorageError, ValueError) as exc:
+                self._show_storage_error(exc)
+                self._set_sync_status("Sync result could not be saved", "danger")
+                return
+            self._sync_resync_pending |= changed
+            if self.todo_list_frame is not None and not self.editing_todo_ids:
                 self.render_todos()
             self._set_sync_status(f"Synced at {datetime.now().strftime('%H:%M:%S')}", "success")
-
         if self._sync_resync_pending:
             self._sync_resync_pending = False
             self.sync_todos()
@@ -586,7 +663,7 @@ class PomodoroApp:
             self.todo_sync_status_lbl.configure(bootstyle=style)
 
     def _schedule_todo_sync(self, delay_ms=2500):
-        if self.root is None:
+        if self.root is None or self._closed:
             return
         if self._todo_sync_after_id is not None:
             self.root.after_cancel(self._todo_sync_after_id)
@@ -700,34 +777,35 @@ class PomodoroApp:
 
         def save():
             try:
-                self.settings["work_time"] = int(work_var.get())
-                self.settings["short_break"] = int(short_var.get())
-                self.settings["long_break"] = int(long_var.get())
-                self.settings["long_break_interval"] = int(interval_var.get())
-                self.settings["sound_enabled"] = sound_var.get()
-                self.settings["unfocus_transparency"] = float(trans_var.get())
-                self.settings["jsonbin_bin_id"] = bin_id_var.get().strip()
-                self.settings["jsonbin_access_key"] = access_key_var.get().strip()
-                self.storage.save_settings()
-                if sys.platform != "darwin":
-                    self.root.attributes("-alpha", self.settings["unfocus_transparency"])
-                if not self.timer_running:
-                    if self.settings["timer_mode"] == "Stopwatch":
-                        self.set_mode("Stopwatch")
-                    else:
-                        if self.current_mode == "Stopwatch":
-                            self.set_mode("Work")
-                        else:
-                            self.set_mode(self.current_mode)
-                on_settings_close()
-            except ValueError:
-                pass
+                changes = {
+                    "work_time": work_var.get(), "short_break": short_var.get(),
+                    "long_break": long_var.get(), "long_break_interval": interval_var.get(),
+                    "sound_enabled": sound_var.get(), "unfocus_transparency": trans_var.get(),
+                    "jsonbin_bin_id": bin_id_var.get().strip(),
+                    "jsonbin_access_key": access_key_var.get().strip(),
+                }
+            except tk.TclError:
+                from tkinter import messagebox
+                messagebox.showerror("Invalid settings", "Enter whole numbers for durations and cycle interval.", parent=settings_win)
+                return
+            if not self.apply_settings(changes):
+                from tkinter import messagebox
+                messagebox.showerror("Settings were not saved", self.last_error, parent=settings_win)
+                return
+            if sys.platform != "darwin":
+                self.root.attributes("-alpha", self.settings["unfocus_transparency"])
+            if not self._timer.has_started or self._session_logged:
+                self.set_mode("Stopwatch" if self.settings["timer_mode"] == "Stopwatch" else ("Work" if self.current_mode == "Stopwatch" else self.current_mode))
+            on_settings_close()
 
         def reset_stats():
             from tkinter import messagebox
+            if self._timer.has_started and not self._session_logged:
+                messagebox.showinfo("Session active", "Finish the current session before resetting statistics.", parent=settings_win)
+                return
             confirm = messagebox.askyesno(
                 "Confirm Reset",
-                "Are you sure you want to reset today's statistics? This cannot be undone.",
+                "Are you sure you want to reset today's statistics? A backup will be created first.",
                 parent=settings_win
             )
             if confirm:
@@ -761,216 +839,271 @@ class PomodoroApp:
 
         settings_win.protocol("WM_DELETE_WINDOW", on_settings_close)
 
-    def set_mode(self, mode):
-        self.current_mode = mode
-        if mode == "Work":
-            self.pomodoro_time = self.settings["work_time"] * 60
-            self.mode_label.config(
-                text=f"{mode} {self.completed_pomodoros + 1}/{self.settings['long_break_interval']}",
-                bootstyle="primary",
-            )
-            self.skip_btn.pack_forget()
-        elif mode == "Short Break":
-            self.pomodoro_time = self.settings["short_break"] * 60
-            self.mode_label.config(text=mode, bootstyle="success")
-            self.stop_btn.pack_forget()
-            if not self.is_maximized:
-                self.skip_btn.pack(pady=4)
-        elif mode == "Long Break":
-            self.pomodoro_time = self.settings["long_break"] * 60
-            self.mode_label.config(text=mode, bootstyle="success")
-            self.stop_btn.pack_forget()
-            if not self.is_maximized:
-                self.skip_btn.pack(pady=4)
-        elif mode == "Stopwatch":
-            self.pomodoro_time = 0
-            self.mode_label.config(text=mode, bootstyle="primary")
-            self.skip_btn.pack_forget()
-            self.stop_btn.pack_forget()
+    def _show_storage_error(self, error):
+        self.last_error = str(error)
+        if self.is_maximized:
+            self.minimize_timer(save_geometry=False)
+        if self.data_status_label is not None:
+            self.data_status_label.config(text=f"{error}\nUse Recovery to restore a validated backup.")
+            self.data_status_label.pack(padx=8, pady=4)
 
+    def _clear_storage_error(self):
+        if not self.storage.errors and not self._pending_session_save:
+            self.last_error = None
+            if self.data_status_label is not None:
+                self.data_status_label.pack_forget()
+
+    def _save_settings(self):
+        try:
+            self.storage.save_settings()
+        except StorageError as exc:
+            self._show_storage_error(exc)
+            return False
+        self._clear_storage_error()
+        return True
+
+    def apply_settings(self, changes):
+        try:
+            candidate = validate_settings(self.settings | changes)
+            self.storage.save_settings(candidate)
+        except (ValueError, StorageError) as exc:
+            self._show_storage_error(exc)
+            return False
+        self._clear_storage_error()
+        return True
+
+    def open_recovery_dialog(self):
+        from tkinter import filedialog, messagebox, simpledialog
+        kind = simpledialog.askstring("Recover data", "Choose: settings, todos, or history", parent=self.root)
+        if kind not in ("settings", "todos", "history"):
+            return
+        path = filedialog.askopenfilename(
+            parent=self.root, title=f"Choose a {kind} backup",
+            initialdir=str(self.storage._path(kind).parent),
+            filetypes=[("JSON backup", "*.bak *.json"), ("All files", "*")],
+        )
+        if not path or not messagebox.askyesno(
+            "Restore backup", "Restore this backup? Valid current data will be backed up first.",
+            parent=self.root,
+        ):
+            return
+        try:
+            self.storage.restore_backup(kind, path)
+        except StorageError as exc:
+            self._show_storage_error(exc)
+            return
+        self._clear_storage_error()
+        if kind == "todos" and not self.editing_todo_ids:
+            self.render_todos()
+        if kind == "settings" and not self._timer.has_started:
+            self.set_mode("Stopwatch" if self.settings["timer_mode"] == "Stopwatch" else "Work")
+        messagebox.showinfo("Backup restored", "Backup restored. An unfinished session remains available to save.", parent=self.root)
+
+    def _cancel_timer(self):
+        self._timer_generation += 1
+        if self._timer_after_id is not None and self.root is not None:
+            self.root.after_cancel(self._timer_after_id)
+        self._timer_after_id = None
+
+    def _prepare_session(self, mode):
+        values = validate_settings(self.settings)
+        key = {"Work": "work_time", "Short Break": "short_break", "Long Break": "long_break"}.get(mode)
+        duration = values[key] * 60 if key else None
+        self._timer.prepare(mode, duration, values["long_break_interval"])
+        self._session_logged = False
+
+    def _render_time(self):
+        self.pomodoro_time = self._timer.display_seconds
         minutes, seconds = divmod(self.pomodoro_time, 60)
         self.timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
 
-    def start_pomodoro(self):
-        self.timer_running = True
-        self.start_btn.pack_forget()
+    def set_mode(self, mode):
+        if self._timer.has_started and not self._session_logged:
+            if not self.log_current_session():
+                return False
+        self._cancel_timer()
+        self.timer_running = False
+        self._prepare_session(mode)
+        self.current_mode = mode
+        if mode == "Work":
+            self.mode_label.config(text=f"{mode} {self.completed_pomodoros + 1}/{self._timer.config.long_break_interval}", bootstyle="primary")
+            self.skip_btn.pack_forget()
+        elif mode in ("Short Break", "Long Break"):
+            self.mode_label.config(text=mode, bootstyle="success")
+            self.stop_btn.pack_forget()
+            if not self.is_maximized:
+                self.skip_btn.pack(pady=4)
+        else:
+            self.mode_label.config(text=mode, bootstyle="primary")
+            self.skip_btn.pack_forget()
+            self.stop_btn.pack_forget()
+        self._render_time()
+        return True
 
+    def start_pomodoro(self):
+        if self._closed or self.timer_running or self._pending_session_save:
+            return
+        if self._timer.has_started and not self._session_logged:
+            self.continue_pomodoro()
+            return
+        try:
+            self._prepare_session(self.current_mode)
+        except ValueError as exc:
+            self._show_storage_error(exc)
+            return
+        self._timer.start()
+        self.timer_running = True
         for child in self.mode_frame.winfo_children():
             child.configure(state="disabled")
-
-        if self.current_mode == "Stopwatch":
-            self.stopwatch_start_time = datetime.now()
-            self.stopwatch_accumulated_seconds = 0
-            self.start_btn.config(
-                text="Pause", command=self.pause_pomodoro, bootstyle="warning"
-            )
-            self.start_btn.pack(pady=4)
-            self.stop_btn.pack(pady=4)
-            self.update_timer()
+        self.start_btn.pack_forget()
+        self.start_btn.config(text="Pause", command=self.pause_pomodoro, bootstyle="warning")
+        self.start_btn.pack(pady=4)
+        if self.current_mode in ("Short Break", "Long Break"):
+            self.skip_btn.pack(pady=4)
+            self.stop_btn.pack_forget()
         else:
-            self.start_btn.config(
-                text="Pause", command=self.pause_pomodoro, bootstyle="warning"
-            )
-            self.start_btn.pack(pady=4)
-            if self.current_mode in ["Short Break", "Long Break"]:
-                self.skip_btn.pack(pady=4)
-                self.stop_btn.pack_forget()
-            else:
-                self.stop_btn.pack(pady=4)
-                self.skip_btn.pack_forget()
-            self.update_timer()
-
-    def pause_pomodoro(self):
-        self.timer_running = False
-        if self.current_mode == "Stopwatch" and self.stopwatch_start_time is not None:
-            elapsed = (datetime.now() - self.stopwatch_start_time).total_seconds()
-            self.stopwatch_accumulated_seconds += elapsed
-            self.stopwatch_start_time = None
-
-        self.start_btn.config(
-            text="Continue", command=self.continue_pomodoro, bootstyle="success"
-        )
-
-    def continue_pomodoro(self):
-        self.timer_running = True
-        if self.current_mode == "Stopwatch":
-            self.stopwatch_start_time = datetime.now()
-
-        self.start_btn.config(
-            text="Pause", command=self.pause_pomodoro, bootstyle="warning"
-        )
+            self.stop_btn.pack(pady=4)
+            self.skip_btn.pack_forget()
         self.update_timer()
 
-    def stop_pomodoro(self):
+    def pause_pomodoro(self):
+        self._timer.pause()
         self.timer_running = False
-        self.log_current_session()
+        self._cancel_timer()
+        self._render_time()
+        self.start_btn.config(text="Continue", command=self.continue_pomodoro, bootstyle="success")
 
-        self.start_btn.config(
-            text="Start", command=self.start_pomodoro, bootstyle="primary"
-        )
+    def continue_pomodoro(self):
+        if self._closed or self.timer_running or self._session_logged or self._pending_session_save:
+            return
+        self._timer.start()
+        self.timer_running = True
+        self.start_btn.config(text="Pause", command=self.pause_pomodoro, bootstyle="warning")
+        self.update_timer()
+
+    def _idle_controls(self):
+        self.start_btn.config(text="Start", command=self.start_pomodoro, bootstyle="primary")
         self.start_btn.pack_forget()
         self.start_btn.pack(pady=4)
         self.stop_btn.pack_forget()
         self.skip_btn.pack_forget()
-        if self.current_mode == "Stopwatch":
-            self.set_mode("Stopwatch")
-        else:
-            self.set_mode("Work")
-
         for child in self.mode_frame.winfo_children():
             child.configure(state="normal")
 
-    def log_current_session(self):
-        if self.current_mode == "Stopwatch":
-            elapsed = 0
-            if self.stopwatch_start_time is not None:
-                elapsed = (datetime.now() - self.stopwatch_start_time).total_seconds()
-            total_active = self.stopwatch_accumulated_seconds + elapsed
-            self.storage.log_session("Stopwatch", total_active)
-            self.stopwatch_start_time = None
-            self.stopwatch_accumulated_seconds = 0
+    def stop_pomodoro(self):
+        if not self.log_current_session():
             return
+        self._idle_controls()
+        self.set_mode("Stopwatch" if self.current_mode == "Stopwatch" else "Work")
 
-        total_duration = self.settings["work_time"] * 60 if self.current_mode == "Work" else (
-            self.settings["short_break"] * 60 if self.current_mode == "Short Break" else self.settings["long_break"] * 60
-        )
-        elapsed = total_duration - self.pomodoro_time
-        self.storage.log_session(self.current_mode, elapsed)
+    def log_current_session(self):
+        self._timer.pause()
+        self.timer_running = False
+        self._cancel_timer()
+        if self._session_logged or not self._timer.has_started:
+            return True
+        self._render_time()
+        try:
+            self.storage.log_session(self._timer.config.mode, self._timer.active_seconds)
+        except StorageError as exc:
+            self._pending_session_save = True
+            self._show_storage_error(exc)
+            self.start_btn.config(text="Retry save", command=self.retry_session_save, bootstyle="danger")
+            return False
+        self._session_logged = True
+        self._pending_session_save = False
+        self._clear_storage_error()
+        return True
+
+    def retry_session_save(self):
+        if not self._pending_session_save:
+            return
+        if self._timer.completed:
+            self.timer_running = True
+            self.update_timer()
+        else:
+            self.stop_pomodoro()
 
     def on_close(self):
-        self.log_current_session()
-        self.timer_running = False
-
+        if self._closed:
+            return
+        if not self.log_current_session():
+            return
+        self._idle_controls()
         try:
-            geom = self.root.geometry()
-            size = geom.split("+")[0]
+            size = re.split(r"[+-]", self.root.geometry(), maxsplit=1)[0]
             w, h = map(int, size.split("x"))
-            if not self.is_maximized:
-                self.settings["window_width"] = w
-                self.settings["window_height"] = h
-            self.storage.save_settings()
-        except Exception as e:
-            print(f"Error saving window size on close: {e}")
+            prefix = "maximized_" if self.is_maximized else ""
+            candidate = self.settings | {prefix + "window_width": w, prefix + "window_height": h}
+            self.storage.save_settings(candidate)
+        except (StorageError, ValueError) as exc:
+            self._show_storage_error(exc)
+            return
+        self._closed = True
+        self._sync_stop_event.set()
+        self._sync_generation += 1
+        for name in ("_todo_sync_after_id", "_sync_poll_after_id"):
+            callback = getattr(self, name)
+            if callback is not None:
+                self.root.after_cancel(callback)
+                setattr(self, name, None)
         self.root.destroy()
 
     def skip_break(self):
-        self.timer_running = False
-        if self.current_mode in ["Short Break", "Long Break"]:
-            total_duration = (
-                self.settings["short_break"] * 60 if self.current_mode == "Short Break" else self.settings["long_break"] * 60
-            )
-            elapsed = total_duration - self.pomodoro_time
-            self.storage.log_session(self.current_mode, elapsed)
-
-        self.start_btn.config(
-            text="Start", command=self.start_pomodoro, bootstyle="primary"
-        )
-        self.start_btn.pack_forget()
-        self.start_btn.pack(pady=4)
-        self.stop_btn.pack_forget()
-        self.skip_btn.pack_forget()
+        if not self.log_current_session():
+            return
+        self._idle_controls()
         self.set_mode("Work")
 
-        for child in self.mode_frame.winfo_children():
-            child.configure(state="normal")
-
     def update_timer(self):
-        if self.timer_running:
-            if self.current_mode == "Stopwatch":
-                minutes, seconds = divmod(self.pomodoro_time, 60)
-                self.timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
-                self.pomodoro_time += 1
-                self.root.after(1000, self.update_timer)
-            else:
-                if self.pomodoro_time > 0:
-                    minutes, seconds = divmod(self.pomodoro_time, 60)
-                    self.timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
-                    self.pomodoro_time -= 1
-                    self.root.after(1000, self.update_timer)
+        self._cancel_timer()
+        if self._closed or not self.timer_running:
+            return
+        self._render_time()
+        if self._timer.completed:
+            mode, interval = self._timer.config.mode, self._timer.config.long_break_interval
+            if not self.log_current_session():
+                return
+            if self.is_maximized:
+                self.minimize_timer()
+            if self.settings["sound_enabled"]:
+                player = shutil.which("paplay") if sys.platform == "linux" else None
+                if player:
+                    try:
+                        subprocess.Popen([player, get_resource_path("complete.oga")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    except OSError:
+                        self.root.bell()
                 else:
-                    self.timer_running = False
+                    self.root.bell()
+            self._idle_controls()
+            if mode == "Work":
+                self.completed_pomodoros += 1
+                self.set_mode("Long Break" if self.completed_pomodoros % interval == 0 else "Short Break")
+            else:
+                if mode == "Long Break":
+                    self.completed_pomodoros = 0
+                self.set_mode("Work")
+            return
+        generation = self._timer_generation
 
-                    if self.is_maximized:
-                        self.minimize_timer()
+        def refresh():
+            if self._closed or generation != self._timer_generation:
+                return
+            self._timer_after_id = None
+            self.update_timer()
 
-                    if self.settings["sound_enabled"]:
-                        if sys.platform == "linux":
-                            sound_file = get_resource_path("complete.oga")
-                            os.system(f'paplay "{sound_file}" 2>/dev/null &')
-                        else:
-                            self.root.bell()
-
-                    self.start_btn.config(
-                        text="Start", command=self.start_pomodoro, bootstyle="primary"
-                    )
-
-                    for child in self.mode_frame.winfo_children():
-                        child.configure(state="normal")
-
-                    if self.current_mode == "Work":
-                        self.completed_pomodoros += 1
-                        self.storage.log_session("Work", self.settings["work_time"] * 60)
-                        if (
-                            self.completed_pomodoros > 0
-                            and self.completed_pomodoros % self.settings["long_break_interval"] == 0
-                        ):
-                            self.set_mode("Long Break")
-                        else:
-                            self.set_mode("Short Break")
-                    else:
-                        if self.current_mode == "Long Break":
-                            self.completed_pomodoros = 0
-                        self.set_mode("Work")
+        self._timer_after_id = self.root.after(1000, refresh)
 
     def maximize_timer(self):
         if not self.is_maximized:
             try:
                 geom = self.root.geometry()
-                size = geom.split("+")[0]
+                size = re.split(r"[+-]", geom, maxsplit=1)[0]
                 w, h = map(int, size.split("x"))
                 self.settings["window_width"] = w
                 self.settings["window_height"] = h
-                self.storage.save_settings()
+                if not self._save_settings():
+                    return
             except Exception as e:
                 print(f"Error saving window size: {e}")
 
@@ -993,15 +1126,16 @@ class PomodoroApp:
 
         self.minimize_btn.pack(side="left", padx=(5, 0), anchor="center")
 
-    def minimize_timer(self):
-        if self.is_maximized:
+    def minimize_timer(self, save_geometry=True):
+        if self.is_maximized and save_geometry:
             try:
                 geom = self.root.geometry()
-                size = geom.split("+")[0]
+                size = re.split(r"[+-]", geom, maxsplit=1)[0]
                 w, h = map(int, size.split("x"))
                 self.settings["maximized_window_width"] = w
                 self.settings["maximized_window_height"] = h
-                self.storage.save_settings()
+                if not self._save_settings():
+                    return
             except Exception as e:
                 print(f"Error saving maximized window size: {e}")
 
@@ -1040,7 +1174,11 @@ class PomodoroApp:
             return
 
         today = date.today().isoformat()
-        history = self.storage.load_history()
+        try:
+            history = self.storage.load_history()
+        except StorageError as exc:
+            self._show_storage_error(exc)
+            return
         today_sessions = [s for s in history if s.get("date") == today]
 
         work_sessions = [s for s in today_sessions if s["type"] == "Work"]
@@ -1114,9 +1252,22 @@ class PomodoroApp:
 
 
 def create_app():
-    storage = StorageManager()
-    app = PomodoroApp(storage)
-    app.root.mainloop()
+    try:
+        with InstanceLock(CONFIG_DIR / "app.lock"):
+            storage = StorageManager()
+            app = PomodoroApp(storage)
+            try:
+                app.root.mainloop()
+            finally:
+                app._sync_stop_event.set()
+    except AlreadyRunning:
+        from tkinter import messagebox
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            messagebox.showinfo("Pomodoro is already running", "Use the existing Pomodoro window. A second instance cannot write to the same data.", parent=root)
+        finally:
+            root.destroy()
 
 
 if __name__ == "__main__":
