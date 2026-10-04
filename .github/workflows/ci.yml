@@ -1,0 +1,63 @@
+name: Validate desktop application
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.23"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: runner.os != 'Linux'
+        with:
+          python-version: "3.12"
+      - name: Install Linux GUI dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes python3-tk xvfb
+      - name: Install locked dependencies on Linux
+        if: runner.os == 'Linux'
+        run: uv sync --locked --python /usr/bin/python3.12
+      - name: Install locked dependencies on Windows and macOS
+        if: runner.os != 'Linux'
+        run: uv sync --locked --python python
+      - name: Regression tests
+        run: uv run --locked python -m pytest -q
+      - name: Native Tk smoke on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum uv run --locked python scripts/smoke_app.py
+      - name: Native Tk smoke on Windows and macOS
+        if: runner.os != 'Linux'
+        run: uv run --locked python scripts/smoke_app.py
+      - name: Build and install Linux package
+        if: runner.os == 'Linux'
+        run: |
+          bash build_deb.sh
+          sudo dpkg --install pomodoro-timer_amd64.deb
+          xvfb-run --auto-servernum uv run --locked python scripts/smoke_packaged.py /usr/bin/pomodoro
+      - name: Build Windows and macOS applications
+        if: runner.os != 'Linux'
+        run: uv run --locked pyinstaller --clean --noconfirm pomodoro.spec
+      - name: Launch packaged Windows application
+        if: runner.os == 'Windows'
+        run: uv run --locked python scripts/smoke_packaged.py dist/pomodoro.exe
+      - name: Launch packaged macOS application
+        if: runner.os == 'macOS'
+        run: uv run --locked python scripts/smoke_packaged.py dist/Pomodoro.app/Contents/MacOS/pomodoro

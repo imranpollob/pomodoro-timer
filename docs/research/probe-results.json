@@ -1,0 +1,53 @@
+{
+  "python": "3.12.15",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "probes": {
+    "rapid_pause_resume": {
+      "scheduled_callbacks_after_resume": 2,
+      "cancelled_callbacks": 0,
+      "stale_callback_changes_remaining_time": true,
+      "remaining_before_stale_callback": 1498,
+      "remaining_after_stale_callback": 1497
+    },
+    "sync_inflight_edit": {
+      "title_after_sync": "Old title",
+      "new_edit_lost": true
+    },
+    "offline_device_after_tombstone_purge": {
+      "remote_count_after_purge": 0,
+      "resurrected_count": 1
+    },
+    "aware_tombstone_timestamp": {
+      "exception": "TypeError",
+      "message": "can't compare offset-naive and offset-aware datetimes"
+    },
+    "corrupt_history": {
+      "invalid_file_overwritten": true,
+      "rows_after_logging": 1
+    },
+    "settings_change_during_session": {
+      "actual_elapsed_seconds_before_change": 60,
+      "recorded_seconds": 360
+    },
+    "zero_long_break_interval": {
+      "exception": "ZeroDivisionError"
+    }
+  },
+  "history_append_benchmark": [
+    {
+      "initial_rows": 100,
+      "median_log_session_ms": 13.544,
+      "file_bytes_after_five_appends": 15753
+    },
+    {
+      "initial_rows": 10000,
+      "median_log_session_ms": 121.538,
+      "file_bytes_after_five_appends": 1500753
+    },
+    {
+      "initial_rows": 100000,
+      "median_log_session_ms": 1153.719,
+      "file_bytes_after_five_appends": 15000753
+    }
+  ]
+}
