@@ -1,0 +1,240 @@
+{
+  "review_date": "2026-10-04",
+  "sources": [
+    {
+      "repo": "focustimerhq/FocusTimer",
+      "stars": 2267,
+      "archived": false,
+      "default_branch": "main",
+      "head": "c2e3dffb4c42fd00294750ea35d91d3886ce3bee",
+      "head_commit_date": "2026-09-20T09:19:03Z",
+      "latest_github_release": null,
+      "latest_release_date": null,
+      "assets": null
+    },
+    {
+      "repo": "zidoro/pomatez",
+      "stars": 4906,
+      "archived": false,
+      "default_branch": "master",
+      "head": "c2727800c6272573590911e9ee81637b89e55d5f",
+      "head_commit_date": "2026-05-19T14:32:15Z",
+      "latest_github_release": "v1.11.0",
+      "latest_release_date": "2026-05-19T14:32:40Z",
+      "assets": [
+        {
+          "name": "latest-linux-arm.yml",
+          "size": 721
+        },
+        {
+          "name": "latest-linux-arm64.yml",
+          "size": 719
+        },
+        {
+          "name": "latest-linux.yml",
+          "size": 720
+        },
+        {
+          "name": "latest-mac.yml",
+          "size": 829
+        },
+        {
+          "name": "latest.yml",
+          "size": 848
+        },
+        {
+          "name": "Pomatez-v1.11.0-linux-aarch64.rpm",
+          "size": 72981041
+        },
+        {
+          "name": "Pomatez-v1.11.0-linux-amd64.deb",
+          "size": 76878566
+        },
+        {
+          "name": "Pomatez-v1.11.0-linux-amd64.snap",
+          "size": 93937664
+        },
+        {
+          "name": "Pomatez-v1.11.0-linux-arm64.AppImage",
+          "size": 111251123
+        },
+        {
+          "name": "Pomatez-v1.11.0-linux-arm64.deb",
+          "size": 72482102
+        },
+        {
+          "name": "Pomatez-v1.11.0-linux-armv7l.AppImage",
+          "size": 100551932
+        },
+        {
+          "name": "Pomatez-v1.11.0-linux-armv7l.deb",
+          "size": 71354400
+        },
+        {
+          "name": "Pomatez-v1.11.0-linux-armv7l.rpm",
+          "size": 71985365
+        },
+        {
+          "name": "Pomatez-v1.11.0-linux-x86_64.AppImage",
+          "size": 110859505
+        },
+        {
+          "name": "Pomatez-v1.11.0-linux-x86_64.rpm",
+          "size": 77528629
+        },
+        {
+          "name": "Pomatez-v1.11.0-mac-arm64.dmg",
+          "size": 101349383
+        },
+        {
+          "name": "Pomatez-v1.11.0-mac-arm64.dmg.blockmap",
+          "size": 105503
+        },
+        {
+          "name": "Pomatez-v1.11.0-mac-arm64.zip",
+          "size": 97542959
+        },
+        {
+          "name": "Pomatez-v1.11.0-mac-arm64.zip.blockmap",
+          "size": 103415
+        },
+        {
+          "name": "Pomatez-v1.11.0-mac-x64.dmg",
+          "size": 107790449
+        },
+        {
+          "name": "Pomatez-v1.11.0-mac-x64.dmg.blockmap",
+          "size": 114752
+        },
+        {
+          "name": "Pomatez-v1.11.0-mac-x64.zip",
+          "size": 104013422
+        },
+        {
+          "name": "Pomatez-v1.11.0-mac-x64.zip.blockmap",
+          "size": 110512
+        },
+        {
+          "name": "Pomatez-v1.11.0-win-arm64-portable.exe",
+          "size": 84468960
+        },
+        {
+          "name": "Pomatez-v1.11.0-win-arm64-setup.exe",
+          "size": 84628792
+        },
+        {
+          "name": "Pomatez-v1.11.0-win-arm64-setup.exe.blockmap",
+          "size": 89277
+        },
+        {
+          "name": "Pomatez-v1.11.0-win-ia32-portable.exe",
+          "size": 72623304
+        },
+        {
+          "name": "Pomatez-v1.11.0-win-ia32-setup.exe",
+          "size": 72783008
+        },
+        {
+          "name": "Pomatez-v1.11.0-win-ia32-setup.exe.blockmap",
+          "size": 77171
+        },
+        {
+          "name": "Pomatez-v1.11.0-win-x64-portable.exe",
+          "size": 78138808
+        },
+        {
+          "name": "Pomatez-v1.11.0-win-x64-setup.exe",
+          "size": 78298920
+        },
+        {
+          "name": "Pomatez-v1.11.0-win-x64-setup.exe.blockmap",
+          "size": 83101
+        },
+        {
+          "name": "Pomatez_1.10.0_aarch64-linux-tauri-beta.AppImage",
+          "size": 83675656
+        },
+        {
+          "name": "Pomatez_1.10.0_amd64-linux-tauri-beta.AppImage",
+          "size": 85649912
+        },
+        {
+          "name": "Pomatez_1.10.0_amd64-linux-tauri-beta.deb",
+          "size": 9531178
+        },
+        {
+          "name": "Pomatez_1.10.0_arm64-linux-tauri-beta.deb",
+          "size": 9525268
+        },
+        {
+          "name": "Pomatez_1.10.0_arm64-setup-win-tauri-beta.exe",
+          "size": 6834272
+        },
+        {
+          "name": "Pomatez_1.10.0_universal-mac-tauri-beta.dmg",
+          "size": 16529693
+        },
+        {
+          "name": "Pomatez_1.10.0_x64_en-US-win-tauri-beta.msi",
+          "size": 10063872
+        },
+        {
+          "name": "tauri-updater.json",
+          "size": 504
+        }
+      ]
+    },
+    {
+      "repo": "Splode/pomotroid",
+      "stars": 5525,
+      "archived": false,
+      "default_branch": "main",
+      "head": "f9f0b266f7a04b895599ca660544219c0d0df054",
+      "head_commit_date": "2026-06-19T20:23:32Z",
+      "latest_github_release": "v1.7.1",
+      "latest_release_date": "2026-05-11T16:59:27Z",
+      "assets": [
+        {
+          "name": "Pomotroid-1.7.1-1.x86_64.rpm",
+          "size": 10107234
+        },
+        {
+          "name": "Pomotroid-1.7.1-1.x86_64.rpm.asc",
+          "size": 228
+        },
+        {
+          "name": "Pomotroid.app.tar.gz",
+          "size": 16790754
+        },
+        {
+          "name": "pomotroid.exe",
+          "size": 20150784
+        },
+        {
+          "name": "Pomotroid_1.7.1_amd64.AppImage",
+          "size": 95373816
+        },
+        {
+          "name": "Pomotroid_1.7.1_amd64.AppImage.asc",
+          "size": 228
+        },
+        {
+          "name": "Pomotroid_1.7.1_amd64.deb",
+          "size": 10105990
+        },
+        {
+          "name": "Pomotroid_1.7.1_amd64.deb.asc",
+          "size": 228
+        },
+        {
+          "name": "Pomotroid_1.7.1_universal.dmg",
+          "size": 16584248
+        },
+        {
+          "name": "Pomotroid_1.7.1_x64-setup.exe",
+          "size": 5770979
+        }
+      ]
+    }
+  ]
+}

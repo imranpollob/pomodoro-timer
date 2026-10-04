@@ -1,0 +1,139 @@
+{
+  "revision": 2,
+  "date": "2026-10-04",
+  "generator": "Built-in image_gen",
+  "boards": 18,
+  "surfaceInventoryRows": 74,
+  "localLinksChecked": 48,
+  "brokenLocalLinks": [],
+  "pngValidation": "Signatures, chunk CRCs, complete zlib payloads, dimensions, scanline lengths and filter identifiers checked.",
+  "visualInspection": "All selected boards inspected; three targeted refinements. See inspection-notes.md for concept limitations.",
+  "assets": [
+    {
+      "file": "01-timer-states.png",
+      "width": 1774,
+      "height": 887,
+      "bytes": 1291619,
+      "sha256": "9db542b4fb1614881813a32c258bfdc966e83ce70790ea0ed06dae796a5b84c9"
+    },
+    {
+      "file": "02-break-and-stopwatch.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1456386,
+      "sha256": "5afc1cffcbdaed9652a200b23d7304e7e635b026659b55ba47cd6fe5962be71b"
+    },
+    {
+      "file": "03-compact-mode.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1306369,
+      "sha256": "957d75fe3a726b0d3df2bd130bd6e760e3515f5dec0b35659048511ee71dd0c3"
+    },
+    {
+      "file": "04-tasks-and-projects.png",
+      "width": 1448,
+      "height": 1086,
+      "bytes": 1018120,
+      "sha256": "5a42f7743e7641783041bfd0d4a1c97b1e904f04d392c8ff080fa29d36466ad6"
+    },
+    {
+      "file": "05-reports-and-export.png",
+      "width": 1448,
+      "height": 1086,
+      "bytes": 1139764,
+      "sha256": "c6197a73315f6e53e868c8bd70e585bdb7fa5d4f02c88458b9f78a521e79ae24"
+    },
+    {
+      "file": "06-settings-timer-appearance.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1356454,
+      "sha256": "b59fbef723ba05636e34002dc3c6fa2f40550650f5b36903432b18910a5a3392"
+    },
+    {
+      "file": "07-settings-alerts-shortcuts.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1387027,
+      "sha256": "b7d924fb0fc270ac579dd9a4367582bf62f15f16c3e2c9dd0fcf5a44c734008f"
+    },
+    {
+      "file": "08-settings-desktop-sync-about.png",
+      "width": 1774,
+      "height": 887,
+      "bytes": 1230228,
+      "sha256": "7897f5660e1e075718a45c86b7feddbac217fccfe42f624b471777a3db2e0453"
+    },
+    {
+      "file": "09-data-and-recovery.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1391458,
+      "sha256": "5ce8912847ef138339fa571db2e709d9dc1f26428c33f5dedfa231ea05d5ea72"
+    },
+    {
+      "file": "10-first-launch-migration-and-resume.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1440051,
+      "sha256": "7f59ccd4341e1185f8f55c03e06017c4238a9f3c76c99d2dda35273885848ca3"
+    },
+    {
+      "file": "11-sync-dialogs-and-conflicts.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1423238,
+      "sha256": "42e7071162d53d96ea2f3b384ed00f7c238c335d802cd71f52f717abfe4e28ff"
+    },
+    {
+      "file": "12-confirmations-empty-and-errors.png",
+      "width": 1448,
+      "height": 1086,
+      "bytes": 1314718,
+      "sha256": "4000b6f534fe66d07219d8a30d355218c06bdfb909f7818554802a732599a2a6"
+    },
+    {
+      "file": "13-tray-notifications-and-updates.png",
+      "width": 1448,
+      "height": 1086,
+      "bytes": 1316196,
+      "sha256": "f7fb705efb2dceaa593785de06f30cb00046d44a38c99aad93c3a6c33430dc30"
+    },
+    {
+      "file": "14-platforms-and-accessibility.png",
+      "width": 1448,
+      "height": 1086,
+      "bytes": 1344537,
+      "sha256": "fbb16d53ac8fc456adefcaeaf721b8a4aa131a10833f8454cf616d03158a644b"
+    },
+    {
+      "file": "15-follow-up-windows.png",
+      "width": 1448,
+      "height": 1086,
+      "bytes": 1435564,
+      "sha256": "e6e889f169775143e395955a0606addf64dd4ba00b0f9575d8ee663ec5481aae"
+    },
+    {
+      "file": "16-support-and-system-dialogs.png",
+      "width": 1448,
+      "height": 1086,
+      "bytes": 1428830,
+      "sha256": "a0f3602829522a5900698d161f57a96c9380ef66916eb26764628c29edb1f629"
+    },
+    {
+      "file": "17-daily-report-and-reset.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1296366,
+      "sha256": "51d845a7bda3d2dea0dff2286d9ccd25a38b1217877c7ac805d181ecffac02ab"
+    },
+    {
+      "file": "18-completion-and-draft-dialogs.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1280431,
+      "sha256": "869deb9fec6d13bdc891d83ec12770ef85b716141986c07beee29a323eba4a8a"
+    }
+  ]
+}
