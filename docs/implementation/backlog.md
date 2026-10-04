@@ -1,6 +1,6 @@
 # Implementation backlog
 
-Execution companion to [implementation-plan.md](implementation-plan.md). The milestone checkboxes in that plan are the source of completion status. B01–B03 are implemented and verified locally on Windows. B04's code and CI workflow are implemented; the three-OS CI results are pending. Remaining batches are planned. See the [implementation log](implementation-log.md) for evidence and limits. This file groups tasks into reviewable change sets.
+Execution companion to [implementation-plan.md](implementation-plan.md). Its milestone checkboxes are the source of completion status. B01–B04/M0 are closed following the user's confirmation that three-OS CI passes. **B05 is in progress:** M1.1 scaffolding is implemented in [`desktop/`](../../desktop/README.md); M1.2 package/capability acceptance remains open. See the [implementation log](implementation-log.md) and [native checklist](platform-validation.md) for evidence and limits. This file groups tasks into reviewable change sets.
 
 ## First batch: stabilize timer and data
 

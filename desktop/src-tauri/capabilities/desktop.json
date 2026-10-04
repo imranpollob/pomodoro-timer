@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-windows",
+  "description": "Local timer views; no filesystem, shell or remote network access from the renderer.",
+  "windows": ["main", "compact"],
+  "permissions": ["core:event:default", "core:window:allow-start-dragging"]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "pomodoro-desktop-beta",
+  "version": "0.1.0-beta.1",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "packageManager": "npm@11.17.0",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "npm run check && vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "test:ui": "playwright test",
+    "preview": "vite preview --host 127.0.0.1",
+    "tauri": "tauri"
+  },
+  "dependencies": { "@tauri-apps/api": "2.12.1", "svelte": "5.57.1" },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@tauri-apps/cli": "2.12.1",
+    "@types/node": "26.6.4",
+    "svelte-check": "4.7.6",
+    "typescript": "6.0.3",
+    "vite": "8.3.2",
+    "vitest": "5.0.3"
+  }
+}

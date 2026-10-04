@@ -68,3 +68,45 @@ Five regression cases cover unmapped main/compact close, hidden compact/restore,
 **Verified locally:** 106 tests and native Tk smoke pass on Windows (Python 3.12.15) and WSL Ubuntu 26.04.1 (Python 3.14.4, Tk 8.6, Xvfb), using locked dependencies and temporary data. The same Linux smoke against the committed pre-fix application failed with the diagnostic above. WSL checks used a separate Linux environment and did not replace the Windows `.venv`.
 
 The exact `ubuntu-24.04` GitHub runner and all three jobs must rerun on the pushed fix before merge. This follow-up did not rebuild packages or change the CI matrix. M0's three-platform gate and post-change performance measurements remain open.
+
+## October 4, 2026 — M0 closed; Tauri migration started
+
+The user confirms that the Windows/macOS/Linux legacy CI now passes and requests M0 closure. M0.8 and M0 are closed on that confirmation. This supersedes the preceding pending-CI status; no remote run URL was supplied. Unrecorded legacy performance measurements carry forward to the M1 comparison and M5.3 rather than being presented as measured.
+
+### Delivered prototype
+
+M1.1 is implemented in the separate [`desktop/`](../../desktop/README.md) workspace. Node 24.19.0/npm 11.17.0 and Rust 1.99.0 are pinned; both dependency lockfiles are included. The legacy application, tests and release workflows remain available.
+
+- The Rust `focus-core` crate owns injected-clock timing, frozen session configuration, Pomodoro cycles, stopwatch, finish/skip outcomes and paused recovery. One serialized service handles commands from all windows/tray, revisions, one-second presentation updates and 15-second checkpoints.
+- SQLite transactions persist a session and checkpoint together; duplicate record IDs are idempotent. Failed transactions freeze active duration and block replacement until retry succeeds. Malformed checkpoints are rejected instead of silently overwritten. Forced termination can lose active time since the latest checkpoint.
+- Svelte views provide the main timer, a 200 × 44 compact countdown with one visible action, recent sessions, timer preferences, finish confirmation, and connection/save/recovery feedback. Compact supports Space, time-region Enter/double-click, drag and a keyboard-accessible native context menu with checked pin/sound items. Main remains reachable when the tray is unavailable.
+- Native integration includes single-instance activation, tray actions, notification testing and close/OS-quit checkpointing. Beta identity and `POMODORO_BETA_DATA_DIR` keep the prototype isolated from legacy profiles. There is no legacy import or remote sync in this batch.
+- `.github/workflows/desktop.yml` checks frontend/Rust code and builds unsigned normal `.deb`, NSIS and `.dmg` prototypes. A separate, nondistributed `smoke-test` executable checks both native webviews' regular IPC and SQLite read-back; the test driver is absent from normal builds.
+
+### Verification
+
+| Check | Result | Environment and scope |
+| --- | --- | --- |
+| Frontend build | Passed; zero Svelte errors/warnings | Windows, Node 24.19.0; production assets generated |
+| Vitest | 4 passed | Event ordering, listener cleanup, display/retry contracts |
+| Playwright | 4 passed | Rendered Svelte with test-only IPC fixtures: pause/resume, modal focus, compact fit/one action, settings validation, empty/connection states |
+| Rust core/service/store | 12 passed | WSL Ubuntu 26.04.1 x86_64; injected clocks, transactional rollback/idempotency, malformed checkpoints and failed-save guards |
+| rustfmt / Clippy | Passed | Normal workspace and `smoke-test` feature; warnings rejected |
+| Native Tauri build and smoke | Passed | WSL/Xvfb/DBus, Rust 1.99.0; both webviews call Rust, shared commands, one saved session and paused SQLite checkpoint |
+| Legacy pytest | 106 passed | Windows Python 3.12; coexistence regression check |
+
+The headless native run logged GTK/EGL/portal warnings. Its success establishes IPC/storage behavior, not tray visibility, physical audio/notifications or accessibility. Windows native compilation is pending C++/Rust prerequisites on this host; macOS and physical Linux tests await the user's machines. The new three-platform workflow is authored and has not run remotely in this session. No replacement performance or installed-package readiness claim is made.
+
+### Next gate
+
+Complete B05/M1.2 package checks on all three platforms, then B06 native capability evidence using the [platform checklist](platform-validation.md). Explicit sleep/lock adapters, global shortcuts, notification permission handling, reliable hidden-main audio, geometry restoration, text scaling and assistive-technology journeys remain open. Tauri stays provisional until these mandatory gates pass.
+
+Tasks/projects, full reports, migration/recovery workflows, synchronization and the remaining UI inventory follow later batches. The foundational Rust/SQLite work supports this prototype; it does not close M2. [ADR 0001](architecture/0001-prototype-boundaries.md) documents these boundaries.
+
+## October 4, 2026 — Windows launch prerequisites
+
+The user could not run the prototype on the current Windows machine. `npm run tauri -- dev` reproduced `cargo metadata ... program not found`: native Windows Rust/Cargo and Microsoft C++ Build Tools were absent; the earlier Rust checks used WSL's separate toolchain.
+
+Installed Rustup through the official winget package and selected Rust 1.99.0 with rustfmt/Clippy. Native `cargo --version` and `rustc --version` now succeed. `cargo test --locked -p focus-core` reaches compilation but fails with **`link.exe not found`**, confirming the remaining C++ prerequisite. The C++ workload installer returned **1602 (cancellation)** while requesting administrator access; the workload was not installed. No native Windows build or launch success is claimed.
+
+The [desktop README](../../desktop/README.md#windows-first-time-setup) now supplies explicit Windows installation commands, administrator/PATH restart instructions, and explanations for missing Cargo/linker errors. Complete the C++ workload installation, restart the IDE/terminal, then rerun the native build and launch checks. The prototype and legacy data were not modified by these checks.

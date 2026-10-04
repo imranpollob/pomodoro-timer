@@ -1,0 +1,88 @@
+name: Validate Tauri prototype
+
+on:
+  pull_request:
+  push:
+    branches: [main, master, v2]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Tauri ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            bundles: deb
+          - os: windows-latest
+            bundles: nsis
+          - os: macos-latest
+            bundles: dmg
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: desktop/.node-version
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev xvfb dbus-x11
+      - name: Pinned Rust toolchain
+        run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/target
+          key: tauri-${{ runner.os }}-${{ runner.arch }}-rust-1.99.0-${{ hashFiles('desktop/Cargo.lock') }}
+      - name: Locked frontend dependencies
+        run: npm ci
+      - name: Frontend checks and tests
+        run: |
+          npm run build
+          npm test
+      - name: Browser UI tests
+        if: runner.os == 'Linux'
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:ui
+      - name: Rust formatting, core tests and lint
+        run: |
+          cargo fmt --all --check
+          cargo test --locked -p focus-core
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Build normal prototype packages
+        run: npm run tauri -- build --ci --bundles ${{ matrix.bundles }} -- --locked
+      - name: Build separate native smoke executable
+        run: cargo build --locked -p pomodoro-desktop-beta --features custom-protocol,smoke-test
+      - name: Native webview/IPC smoke on Linux
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- xvfb-run --auto-servernum python scripts/native_smoke.py target/debug/pomodoro-desktop-beta
+      - name: Native webview/IPC smoke on Windows
+        if: runner.os == 'Windows'
+        run: python scripts/native_smoke.py target/debug/pomodoro-desktop-beta.exe
+      - name: Native webview/IPC smoke on macOS
+        if: runner.os == 'macOS'
+        run: python scripts/native_smoke.py target/debug/pomodoro-desktop-beta
+      - name: Upload unsigned prototype packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pomodoro-beta-${{ runner.os }}-${{ runner.arch }}
+          path: desktop/target/release/bundle/
+          if-no-files-found: error

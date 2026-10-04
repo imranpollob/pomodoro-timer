@@ -1,6 +1,8 @@
 # Pomodoro Timer
 A desktop Pomodoro timer and stopwatch app that always stays on top. It includes todo management, daily stats, syncing, and more.
 
+The Tauri/Rust/Svelte rebuild has started in [`desktop/`](desktop/README.md). It is an isolated beta prototype with main/compact timers and SQLite persistence. The Python application below remains available while Windows, macOS and Linux acceptance, migration and feature parity are completed. See the [implementation status](docs/implementation/implementation-log.md) and [native test checklist](docs/implementation/platform-validation.md).
+
 
 
 ## Quick Start

@@ -64,3 +64,10 @@ deb_workspace/
 
 # Tool data
 .mimocode/
+
+# Tauri prototype
+desktop/node_modules/
+desktop/target/
+desktop/src-tauri/gen/
+desktop/test-results/
+desktop/playwright-report/

@@ -6,7 +6,7 @@ Prepared October 4, 2026. Based on the [project review](../research/project-revi
 
 **Proposed stack:** Tauri 2 + Rust + Svelte/TypeScript + SQLite. This is the planning default, subject to a packaged platform prototype. If a mandatory capability fails, implement an adapter or evaluate PySide6/Qt before proceeding. Do not drop an OS to make the rebuild easier.
 
-Implementation has started with the M0 stabilization batch in the existing Python app. M0.1–M0.7 are implemented and verified locally on Windows; the three-OS CI workflow is authored but has not run remotely. The replacement UI and Tauri workspace are still planned. See the [implementation log](implementation-log.md) for changes, validation evidence, and remaining gates.
+M0 is closed following the user's October 4 confirmation that all three CI platforms pass. M1 has started in the separate [`desktop/`](../../desktop/README.md) workspace: Rust timer/SQLite service, Svelte main/compact views, settings, recent sessions, and a three-platform prototype workflow. Tauri's native platform gates remain open. See the [implementation log](implementation-log.md) and [platform validation checklist](platform-validation.md) for evidence and limits.
 
 ## 1. Approximate final product
 
@@ -85,15 +85,15 @@ Keep `src/`, the current tests, and current packaging working while the new app 
 - [x] M0.5 Merge sync results against current local revisions, preserve edits that occurred during requests, and normalize timestamps. Validate every task object, use stable new IDs, and surface worker errors through a main-thread result queue.
 - [x] M0.6 Stop time-only tombstone purging. Preserve deletion knowledge. Document that whole-bin GET/PUT still cannot ensure cross-device consistency; do not claim the bridge fix is the final sync protocol.
 - [x] M0.7 Prevent conflicting application instances or writes. Preserve existing data paths and configuration behavior.
-- [ ] M0.8 Add PR CI for locked dependencies and pytest on all three OSs; retain Linux installed-app smoke testing and add feasible Windows/macOS launch checks.
+- [x] M0.8 Add PR CI for locked dependencies and pytest on all three OSs; retain Linux installed-app smoke testing and add feasible Windows/macOS launch checks.
 
-**Exit:** existing behavior remains covered; rapid pause/resume, in-flight edits, malformed history, invalid settings, timezone-aware timestamps, and offline deletion cases pass regression tests. Failed writes remain visible and leave recoverable data. Record baseline startup, history timings, and total process-tree resource use.
+**Exit:** existing behavior remains covered; rapid pause/resume, in-flight edits, malformed history, invalid settings, timezone-aware timestamps, and offline deletion cases pass regression tests. Failed writes remain visible and leave recoverable data. Outstanding baseline startup, history timings, and process-tree resource measurements carry forward to the prototype comparison and M5.3; they are not claimed as measured.
 
-**Current gate status:** 106 tests and native Tk smoke pass locally on Windows and WSL Ubuntu; the earlier Windows packaged build/launch also passed. The reported CI run passed Windows/macOS but exposed a Linux hidden-window geometry defect, now fixed locally. M0.8 awaits successful Windows/macOS/Linux CI runs on the fix. Post-change performance measurements and the three-OS results remain required before closing M0; see the [implementation log](implementation-log.md) for environment details.
+**Current gate status: closed.** The user confirms Windows/macOS/Linux CI passes following the Linux geometry fix and explicitly requests M0 closure. Local evidence includes 106 legacy tests and native Tk smoke on Windows/WSL, and the earlier Windows package build/launch. The new Tauri workflow has separate pending results; M0 closure does not establish replacement-platform readiness.
 
 ### M1 — Prove the stack and establish the product contract
 
-- [ ] M1.1 Create the new desktop workspace without moving/deleting the working Python app. Pin a supported stable toolchain and commit both Rust and frontend lockfiles.
+- [x] M1.1 Create the new desktop workspace without moving/deleting the working Python app. Pin a supported stable toolchain and include both Rust and frontend lockfiles in the change set.
 - [ ] M1.2 Package a minimal timer on Windows, macOS, and Linux. Prove native notifications/audio, minimize/reopen, single-instance activation, compact geometry, sleep/wake events, keyboard controls, and a persisted record.
 - [ ] M1.3 Test GNOME/KDE on Wayland/X11: tray availability, portal shortcuts, pinning/position/opacity, and notification behavior. Add adapters or explicit capability handling. An unavailable tray must not strand a hidden app.
 - [ ] M1.4 Prove the UI automation harness on all three OSs and disable any embedded driver/test endpoints in production builds.
@@ -101,6 +101,8 @@ Keep `src/`, the current tests, and current packaging working while the new app 
 - [ ] M1.6 Finalize the [revision-2 UI specification](ui-design-spec.md) and its complete surface inventory: tokens, light/dark components, modal focus, error/recovery paths, adaptive layouts, and keyboard/assistive equivalents. Prototype and validate the 200 × 44 compact strip with one visible control before locking geometry.
 - [ ] M1.7 Write architecture decisions for stack, timer/sleep semantics, storage, supported platform baselines, sync protocol requirements, and release distribution.
 - [ ] M1.8 Decide a revision-aware sync provider or protocol implementation. Record its conditional-write/operation guarantees, migration support, privacy behavior, credentials, hosting responsibility, and recurring costs. Leave vendor selection open until these facts are established.
+
+**Current progress:** M1.1 is implemented. M1.2–M1.5 have a working prototype and initial automated evidence: 12 Rust tests, four frontend unit tests, four browser UI tests, and native Linux IPC/SQLite smoke. A workflow builds normal unsigned beta packages for all three platforms; remote results and physical desktop acceptance remain pending. [ADR 0001](architecture/0001-prototype-boundaries.md) records provisional boundaries. Explicit suspend adapters, global shortcuts, native audio/permission handling and remaining UI surfaces are still open.
 
 **Exit:** the mandatory timer/task/history interaction path is viable on all three OSs, desktop capability results are recorded, and the selected stack has no unresolved mandatory-platform blocker. If it fails, evaluate Qt before growing the Tauri implementation. Revised estimates and support policy are recorded.
 
@@ -300,6 +302,6 @@ External prerequisites to resolve during M1: macOS Intel/Apple Silicon testing a
 
 ## 10. First implementation batch
 
-The first reviewable batch should be **M0.1–M0.4**: regression cases, single-scheduler monotonic timing, configuration validation/snapshots, and recoverable atomic JSON persistence. Follow with **M0.5–M0.8** for the sync bridge and three-OS CI. Only then grow the replacement beyond the M1 prototype.
+M0 is closed. The current reviewable batch is **B05**, the separate Tauri prototype and packaging workflow. Next, validate its normal packages on Windows, macOS and Linux and complete **B06** capability/automation evidence before growing the replacement beyond M1.
 
 Track the individual tasks in [backlog.md](backlog.md). The design images and [exact generation prompts](mockup-prompts.json) are included for review; final UI decisions should be made from the behavior/accessibility specifications and prototype evidence.

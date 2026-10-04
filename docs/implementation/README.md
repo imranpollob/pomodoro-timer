@@ -2,6 +2,8 @@
 
 See the [implementation log](implementation-log.md) for completed stabilization changes, test results, remaining platform gates, and the next batch.
 
+M0 is closed; M1 is underway. Run and verify the separate [Tauri beta prototype](../../desktop/README.md), collect results using the [native platform checklist](platform-validation.md), and consult [ADR 0001](architecture/0001-prototype-boundaries.md) for its current boundaries.
+
 See [the implementation plan](implementation-plan.md) for the roadmap, delivery gates, migration design, and product concepts.
 
 See the [complete revision-2 mockup gallery](mockups/v2/README.md) for all 18 boards, including dialogs, recovery, settings, native integrations, and later-release concepts.

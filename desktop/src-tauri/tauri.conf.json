@@ -1,0 +1,29 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Pomodoro Beta",
+  "version": "../package.json",
+  "identifier": "com.imranpollob.pomodoro-timer.beta",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      { "label": "main", "title": "Pomodoro Beta", "width": 960, "height": 680, "minWidth": 660, "minHeight": 520 },
+      { "label": "compact", "title": "Pomodoro compact timer", "url": "index.html?view=compact", "width": 200, "height": 44, "minWidth": 200, "minHeight": 44, "decorations": false, "resizable": true, "visible": false, "alwaysOnTop": true }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Productivity",
+    "shortDescription": "Cross-platform focus timer prototype",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "macOS": { "minimumSystemVersion": "12.0" }
+  }
+}

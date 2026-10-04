@@ -1,0 +1,11 @@
+[package]
+name = "focus-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+rusqlite = { version = "0.40.2", features = ["bundled"] }

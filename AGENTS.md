@@ -2,42 +2,44 @@
 
 ## Rebuild Direction & Product Requirements
 
-Follow `docs/implementation/implementation-plan.md`, `docs/implementation/backlog.md`, and `docs/implementation/ui-design-spec.md`; record evidence in `docs/implementation/implementation-log.md`. Proposed stack: **Tauri 2, Rust, Svelte/TypeScript, SQLite**, subject to packaged prototypes on Windows, macOS, and Linux. All three are mandatory. Resolve capability gaps with adapters or evaluate Qt.
+Follow the plan, backlog, and UI specification in `docs/implementation/`; record evidence in `implementation-log.md`. M0 is closed; M1 uses **Tauri 2, Rust, Svelte/TypeScript, SQLite**, provisionally. Windows, macOS, and Linux are mandatory. Resolve capability gaps with adapters or evaluate Qt.
 
-Develop the replacement in a separate workspace. Keep the Python app usable until migration, feature parity, and platform acceptance pass. Preserve legacy data with backed-up, validated, idempotent migration. Pin toolchains and commit dependency lockfiles.
+Keep the Python app usable until migration, feature parity, and platform acceptance pass. Preserve legacy data with backed-up, validated, idempotent migration. Pin toolchains and commit dependency lockfiles.
 
-Keep one backend timer authority with injected clocks, session snapshots, explicit sleep/wake handling, and transactional persistence. UI/tray/shortcuts share commands/state. Compact countdown targets **200 × 44 logical pixels**: time, phase indicator, one play/pause button. Other actions belong in the accessible context menu. Follow the window/state inventory.
+Keep one backend timer authority with injected clocks, session snapshots, sleep/wake handling, and transactional persistence. UI/tray/shortcuts share commands/state. Compact countdown targets **200 × 44 logical pixels**: time, phase indicator, one play/pause button. Other actions belong in the accessible context menu. Follow the window/state inventory.
 
 ## Project Structure
 
-Python UI/core services and runtime assets live in `src/`; screenshots are in `images/`, tests in `tests/`, smoke scripts in `scripts/`, packaging in platform directories and `pomodoro.spec`.
+`desktop/crates/focus-core/` owns timer/service/SQLite; `desktop/src-tauri/` owns native integration; `desktop/src/` contains Svelte views. Frontend tests use `desktop/tests/`; Rust tests accompany modules. Python source/assets remain in `src/`, tests in `tests/`, smoke scripts in `scripts/`, and packaging in platform directories/`pomodoro.spec`.
 
 ## Build, Test, and Development Commands
 
-From the repository root:
+Legacy commands from the root:
 
-- `uv sync --locked`: install dependencies.
-- `uv run --locked python src/pomodoro.py`: launch locally.
-- `uv run --locked python -m pytest -q`: run regressions.
-- `uv run --locked python scripts/smoke_app.py`: check real Tk widgets.
-- `uv run --locked pyinstaller --noconfirm pomodoro.spec`: package the app.
+- `uv sync --locked`: install; `uv run --locked python src/pomodoro.py`: launch.
+- `uv run --locked python -m pytest -q`: regressions.
 
-See `README.md` for installer commands. Headless Linux needs `xvfb-run --auto-servernum`. Document replacement commands when its workspace exists.
+From `desktop/`, install native prerequisites per its README:
+
+- `npm ci`; `npm run tauri -- dev`: install/start.
+- `npm run build`; `npm test`; `npm run test:ui`: frontend checks.
+- `cargo test --locked -p focus-core`: core regressions.
+- `cargo fmt --all --check`; `cargo clippy --locked --workspace --all-targets -- -D warnings`: style/lint.
 
 ## Coding Style & Naming Conventions
 
-Use four-space Python indentation, `snake_case` functions/modules, `PascalCase` types, and `UPPER_CASE` constants. Python has no configured formatter/linter. Configure Rust formatting/linting and frontend checks with the replacement workspace. Tk operations stay on the main thread.
+Use four-space Python indentation, rustfmt, and two-space TypeScript/Svelte indentation. Rust/Python functions use `snake_case`, TypeScript uses `camelCase`, types/components use `PascalCase`. Python has no formatter/linter. Tk operations stay on the main thread; frontend views must not own timer state.
 
 ## Testing Guidelines
 
-Use pytest `test_*.py`/`test_*`, fake clocks/responses, and temporary profiles. Preserve regressions; research probes document historical failures. Add core, migration, and packaged UI tests during rebuilding.
+Use pytest `test_*.py`/`test_*`, Rust unit tests, Vitest `*.test.ts`, and Playwright `*.spec.ts`. Inject clocks/failures and isolate profiles. Research probes document historical failures. Never distribute the `smoke-test` feature.
 
-The user has native macOS/Linux machines available for testing; coordinate commands/results without assuming remote access. Supplement CI/WSL with installed-build checks: sleep/wake, tray/reopen, notifications/audio, shortcuts, monitors/scaling, accessibility, and Linux Wayland/X11. Record OS/version, architecture, desktop session, build revision, and results. Require three-platform evidence before closing platform gates.
+Use `platform-validation.md` for installed-build checks on all three OSs, including the user's Mac/Linux. Record revision, OS, architecture, desktop session and results. CI/WSL/browser fixtures do not establish physical desktop acceptance.
 
 ## Commit & Pull Request Guidelines
 
-Use descriptive subjects, following “Fix Linux release packaging.” PRs explain behavior, tests, platform limitations, related issues, and UI screenshots. Python version bumps use `uv version --bump patch`.
+Use descriptive subjects. PRs explain behavior, tests, platform limitations, issues, and UI screenshots. Python version bumps use `uv version --bump patch`.
 
 ## Configuration & Data Safety
 
-Use `POMODORO_DATA_DIR` for isolated legacy profiles. Keep credentials/personal data/build outputs out of Git. Preserve backups and deletion knowledge; JSONBin whole-bin concurrency requires a replacement protocol.
+Use `POMODORO_DATA_DIR` for legacy profiles and `POMODORO_BETA_DATA_DIR` for beta profiles. Never modify legacy data from the prototype. Keep credentials/personal data/build outputs out of Git. Preserve backups and deletion knowledge.

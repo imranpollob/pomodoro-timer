@@ -1,0 +1,14 @@
+[workspace]
+members = ["crates/focus-core", "src-tauri"]
+default-members = ["crates/focus-core"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0-beta.1"
+edition = "2024"
+rust-version = "1.99"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
