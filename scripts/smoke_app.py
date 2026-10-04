@@ -59,7 +59,7 @@ def main():
             app.minimize_timer()
             app.root.update()
             app.on_close()
-            assert app._closed
+            assert app._closed, f"Close failed: {app.last_error}; geometry={app.root.geometry()}"
         finally:
             app._sync_stop_event.set()
             if not app._closed:

@@ -27,7 +27,7 @@ import subprocess
 from datetime import datetime, date
 from importlib import metadata
 from storage import CONFIG_DIR, StorageManager, StorageError
-from settings import validate_settings
+from settings import INTEGER_BOUNDS, validate_settings
 from timer import SessionTimer
 from instance import InstanceLock, AlreadyRunning
 from sync import JsonBinClient, merge_todos, reconcile_todos, next_timestamp
@@ -1024,6 +1024,21 @@ class PomodoroApp:
         else:
             self.stop_pomodoro()
 
+    def _window_size_changes(self):
+        self.root.update_idletasks()
+        # X11 can report 1x1 for a withdrawn window that has never been mapped.
+        # Keep the last validated dimensions until there is usable geometry.
+        if not self.root.winfo_ismapped():
+            return {}
+        size = re.split(r"[+-]", self.root.geometry(), maxsplit=1)[0]
+        width, height = map(int, size.split("x"))
+        prefix = "maximized_" if self.is_maximized else ""
+        changes = {prefix + "window_width": width, prefix + "window_height": height}
+        if any(not INTEGER_BOUNDS[key][0] <= value <= INTEGER_BOUNDS[key][1]
+               for key, value in changes.items()):
+            return {}
+        return changes
+
     def on_close(self):
         if self._closed:
             return
@@ -1031,10 +1046,7 @@ class PomodoroApp:
             return
         self._idle_controls()
         try:
-            size = re.split(r"[+-]", self.root.geometry(), maxsplit=1)[0]
-            w, h = map(int, size.split("x"))
-            prefix = "maximized_" if self.is_maximized else ""
-            candidate = self.settings | {prefix + "window_width": w, prefix + "window_height": h}
+            candidate = self.settings | self._window_size_changes()
             self.storage.save_settings(candidate)
         except (StorageError, ValueError) as exc:
             self._show_storage_error(exc)
@@ -1097,12 +1109,7 @@ class PomodoroApp:
     def maximize_timer(self):
         if not self.is_maximized:
             try:
-                geom = self.root.geometry()
-                size = re.split(r"[+-]", geom, maxsplit=1)[0]
-                w, h = map(int, size.split("x"))
-                self.settings["window_width"] = w
-                self.settings["window_height"] = h
-                if not self._save_settings():
+                if not self.apply_settings(self._window_size_changes()):
                     return
             except Exception as e:
                 print(f"Error saving window size: {e}")
@@ -1129,12 +1136,7 @@ class PomodoroApp:
     def minimize_timer(self, save_geometry=True):
         if self.is_maximized and save_geometry:
             try:
-                geom = self.root.geometry()
-                size = re.split(r"[+-]", geom, maxsplit=1)[0]
-                w, h = map(int, size.split("x"))
-                self.settings["maximized_window_width"] = w
-                self.settings["maximized_window_height"] = h
-                if not self._save_settings():
+                if not self.apply_settings(self._window_size_changes()):
                     return
             except Exception as e:
                 print(f"Error saving maximized window size: {e}")

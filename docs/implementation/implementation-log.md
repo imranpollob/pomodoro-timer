@@ -56,3 +56,15 @@ Next: run the three-OS CI and record baseline measurements, then B05/B06 should 
 Core additions: `src/timer.py`, `src/settings.py`, `src/instance.py`. Integration: `src/pomodoro.py`, `src/storage.py`, `src/sync.py`. Verification: `tests/test_stabilization.py`, updated existing tests, `scripts/smoke_app.py`, `scripts/smoke_packaged.py`, `.github/workflows/ci.yml`.
 
 Implementation contracts follow Python's official documentation for [monotonic clocks](https://docs.python.org/3/library/time.html#time.monotonic), [replacement semantics](https://docs.python.org/3/library/os.html#os.replace), and [thread-safe queues](https://docs.python.org/3/library/queue.html). CI configuration follows the [official uv integration guide](https://docs.astral.sh/uv/guides/integration/github/) and [setup-python documentation](https://github.com/actions/setup-python).
+
+## October 4, 2026 — Linux CI close failure
+
+The reported CI screenshot shows Windows/macOS validation passing and Linux failing at the native Tk smoke's close assertion. Reproducing the committed application under Linux/Xvfb exposed the underlying error: `window_width must be an integer from 80 to 8192`, with geometry `1x1+0+0`. The withdrawn window had never been mapped. Compact/restore captured that temporary geometry, mutated settings, and caused subsequent saves and close to fail validation.
+
+Geometry capture now flushes pending layout and retains the last validated dimensions for unmapped windows or dimensions outside the existing bounds. Close and compact/restore use the same helper. Compact/restore save candidates before changing in-memory settings. Settings bounds and genuine storage-error handling remain intact. The smoke assertion now reports the error and geometry when close fails.
+
+Five regression cases cover unmapped main/compact close, hidden compact/restore, and out-of-range sizes. Shared source-path setup in `tests/conftest.py` also permits selecting the stabilization tests independently of collection order.
+
+**Verified locally:** 106 tests and native Tk smoke pass on Windows (Python 3.12.15) and WSL Ubuntu 26.04.1 (Python 3.14.4, Tk 8.6, Xvfb), using locked dependencies and temporary data. The same Linux smoke against the committed pre-fix application failed with the diagnostic above. WSL checks used a separate Linux environment and did not replace the Windows `.venv`.
+
+The exact `ubuntu-24.04` GitHub runner and all three jobs must rerun on the pushed fix before merge. This follow-up did not rebuild packages or change the CI matrix. M0's three-platform gate and post-change performance measurements remain open.

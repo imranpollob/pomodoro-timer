@@ -89,7 +89,7 @@ Keep `src/`, the current tests, and current packaging working while the new app 
 
 **Exit:** existing behavior remains covered; rapid pause/resume, in-flight edits, malformed history, invalid settings, timezone-aware timestamps, and offline deletion cases pass regression tests. Failed writes remain visible and leave recoverable data. Record baseline startup, history timings, and total process-tree resource use.
 
-**Current gate status:** 101 tests and native Tk/packaged-startup smoke checks pass locally on Windows. M0.8 awaits successful Windows/macOS/Linux CI runs. Post-change performance measurements and the three-OS results remain required before closing M0.
+**Current gate status:** 106 tests and native Tk smoke pass locally on Windows and WSL Ubuntu; the earlier Windows packaged build/launch also passed. The reported CI run passed Windows/macOS but exposed a Linux hidden-window geometry defect, now fixed locally. M0.8 awaits successful Windows/macOS/Linux CI runs on the fix. Post-change performance measurements and the three-OS results remain required before closing M0; see the [implementation log](implementation-log.md) for environment details.
 
 ### M1 — Prove the stack and establish the product contract
 

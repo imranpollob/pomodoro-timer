@@ -6,8 +6,6 @@ import tomllib
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 PROJECT_VERSION = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
-
 import pomodoro
 from storage import StorageManager
 from pomodoro import PomodoroApp
@@ -114,6 +112,7 @@ class FakeRoot:
         self.protocol_calls = []
         self.destroy_calls = 0
         self.current_geom = current_geom
+        self.mapped = True
 
     def after(self, delay, callback):
         self._next_after_id += 1
@@ -148,6 +147,9 @@ class FakeRoot:
 
     def update_idletasks(self):
         pass
+
+    def winfo_ismapped(self):
+        return self.mapped
 
     def iconbitmap(self, icon_path):
         self.iconbitmap_calls.append(icon_path)

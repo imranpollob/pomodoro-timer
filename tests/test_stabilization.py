@@ -471,3 +471,45 @@ def test_window_sizes_are_preserved_with_negative_monitor_coordinates(tmp_path):
     app.on_close()
     assert app.root.destroy_calls == 1
 
+
+@pytest.mark.parametrize("compact", [False, True])
+def test_close_before_window_is_mapped_preserves_saved_size(tmp_path, compact):
+    app = get_test_app(tmp_path)
+    app.storage.save_settings()
+    app.is_maximized = compact
+    app.root.mapped = False
+    app.root.current_geom = "1x1+0+0"
+    original = dict(app.settings)
+    app.on_close()
+    assert app._closed, app.last_error
+    assert app.root.destroy_calls == 1
+    assert app.settings == original
+    assert json.loads(app.storage.settings_file.read_text(encoding="utf-8")) == original
+
+
+def test_hidden_mode_switches_cannot_poison_saved_dimensions(tmp_path):
+    app = get_test_app(tmp_path)
+    app.storage.save_settings()
+    original = dict(app.settings)
+    app.root.mapped = False
+    app.root.current_geom = "1x1+0+0"
+    app.maximize_timer()
+    assert app.is_maximized
+    app.root.current_geom = "1x1+0+0"
+    app.minimize_timer()
+    assert not app.is_maximized
+    assert app.settings == original
+    app.on_close()
+    assert app._closed, app.last_error
+
+
+@pytest.mark.parametrize("geometry", ["40x30+0+0", "9000x9000+0+0"])
+def test_close_with_out_of_range_size_keeps_last_valid_dimensions(tmp_path, geometry):
+    app = get_test_app(tmp_path)
+    app.storage.save_settings()
+    original = dict(app.settings)
+    app.root.current_geom = geometry
+    app.on_close()
+    assert app._closed, app.last_error
+    assert app.settings == original
+
