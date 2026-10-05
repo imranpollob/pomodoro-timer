@@ -110,3 +110,39 @@ The user could not run the prototype on the current Windows machine. `npm run ta
 Installed Rustup through the official winget package and selected Rust 1.99.0 with rustfmt/Clippy. Native `cargo --version` and `rustc --version` now succeed. `cargo test --locked -p focus-core` reaches compilation but fails with **`link.exe not found`**, confirming the remaining C++ prerequisite. The C++ workload installer returned **1602 (cancellation)** while requesting administrator access; the workload was not installed. No native Windows build or launch success is claimed.
 
 The [desktop README](../../desktop/README.md#windows-first-time-setup) now supplies explicit Windows installation commands, administrator/PATH restart instructions, and explanations for missing Cargo/linker errors. Complete the C++ workload installation, restart the IDE/terminal, then rerun the native build and launch checks. The prototype and legacy data were not modified by these checks.
+
+## October 5, 2026 — Windows integration and installed-build validation
+
+The user confirms that Windows development launch works and requests the next steps, scoped to Windows. macOS/Linux-specific work will be completed when the user is on those machines. Their support remains mandatory; this batch does not close M1's three-platform gate.
+
+### Resulting behavior
+
+- Native Rodio/CPAL audio replaces Web Audio. Main, compact and tray sessions use the same backend completion path; output-device errors are visible. Volume/mute and cancellable preview are available in Settings. Notification opt-in and OS-controlled delivery are explained without treating the desktop plugin's permission result as actual delivery proof.
+- Optional editable timer/open-window global shortcuts register through the native plugin and share normal commands. Conflicts keep previous settings/bindings. Windows UI Automation verifies real key presses while a separate test window owns foreground focus.
+- SQLite schema 2 adds validated desktop preferences and window placement. A transactional schema-1 upgrade preserves sessions/checkpoints. Placement writes are debounced; normal exit flushes pending placement. Compact pinning is persisted and synchronized with Settings; work-area clamping handles removed/negative-coordinate monitors.
+- Compact text supports 100/125/150/200% and automatically grows instead of clipping long stopwatch digits. Manual edge resizing is disabled. Native Windows tests exposed shadow-related height inflation at 125% DPI; disabling compact shadows fixes its client area to **200 × 44 logical pixels**. Native accessibility Invoke, ordinary click, double-click and Enter now reopen main.
+- A hidden top-level Windows listener pauses/checkpoints on suspend and lock. It captures notification time before queueing, so delayed processing excludes suspension. Its response wait is limited to one second; write failures/timeouts are reported asynchronously. Wake/unlock remains paused until explicit resume. Persistence still has the documented crash/failed-write boundaries.
+- Vite ignores Rust source/build and generated test files, preventing Windows watcher lock errors during concurrent frontend/native development. The native library uses an `rlib` with a distinct name, eliminating unnecessary desktop DLL output/PDB collisions.
+- Settings drafts merge backend changes into unedited fields. Compact sound/pin changes therefore reach the main form without discarding an unsaved duration or volume edit; timer ticks do not replace an unchanged draft.
+
+### Verification
+
+Environment: Windows 11 Home 10.0.26300 x64; 120 DPI (125%); Rust 1.99.0, Node 24.19.0/npm 11.17.0, Python 3.12.15, Microsoft C++ Build Tools and WebView2. Base revision `1c362b9` plus working-tree changes.
+
+| Check | Result |
+| --- | --- |
+| Production frontend | Passed; zero Svelte errors/warnings |
+| Rust core/store/service | 16 passed, including delayed suspend processing, frozen interruption duration and schema-1 upgrade |
+| Native preferences/geometry unit tests | 4 passed |
+| Vitest / Playwright | 6 / 6 passed |
+| rustfmt / Clippy | Passed, normal and smoke-feature targets; warnings rejected |
+| Native rendered-control/IPC smoke | Passed: main/compact UI, finish dialog, SQLite, pin/text propagation, clamping, Windows suspend/lock messages and shortcut conflict/registration |
+| Normal release executable / Windows UI Automation | Passed: real controls, 200 × 44 compact at 125% DPI, accessible minimized-main reopen, real background shortcuts, second-instance activation, driver absence and paused restart recovery |
+| Unsigned NSIS package | Built; current-user install, registry location, installed normal-build UI journey and uninstall verified with isolated profiles |
+| Audio / notification API | Output device accepted native playback; installed notification request returned without an error |
+
+The user missed the audio/notification test; hearing and receipt remain unconfirmed. Real suspend/wake and lock/unlock, Narrator, tray visibility, monitor removal and other display scales require manual Windows checks. The separate native smoke simulates OS messages; it does not suspend or lock the user's machine. Its successful exit logged a WebView2 class-unregistration warning (1412), with no failing assertion or record discrepancy.
+
+`desktop/scripts/windows_ui_smoke.py` drives normal artifacts through UI Automation and uses disposable SQLite data. `windows_install_smoke.ps1` refuses to replace an existing beta installation, verifies a workspace-contained target and retains app data during silent uninstall. CI now exercises the installed normal Windows artifact separately from the nondistributed smoke-feature executable. Remote results for this updated workflow are pending.
+
+See [ADR 0002](architecture/0002-windows-integrations.md), the [Windows platform record](platform-validation.md), [machine-readable evidence](windows-validation-2026-10-05.json), and updated [desktop instructions](../../desktop/README.md). The unsigned installer is under `desktop/target/release/bundle/nsis/`; generated binaries, test environments and reports remain ignored. No release, signing, remote sync conversion or legacy-data migration was performed.

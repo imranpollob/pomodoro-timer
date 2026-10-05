@@ -24,7 +24,7 @@ No task title, title bar, close/minimize buttons, pin/expand buttons, stop butto
 | --- | --- |
 | Activate the one button | Start, pause, or resume the authoritative session; never create a second timer |
 | Space when compact is focused | Same start/pause/resume command |
-| Double-click the time | Open and focus the main window without changing session state |
+| Click/double-click the time, or use assistive-technology Invoke | Open and focus the main window without changing session state; ordinary click supports the native Windows accessibility action |
 | Enter when the time region is focused | Open the main window; Enter on the button activates that button |
 | Right-click, Shift+F10, or keyboard menu key | Open the same accessible context menu |
 | Drag unused background | Move the strip where the desktop permits placement |

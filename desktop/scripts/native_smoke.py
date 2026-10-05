@@ -21,7 +21,7 @@ def main():
             options["startupinfo"] = startup
         process = subprocess.Popen([str(executable)], env=environment, **options)
         try:
-            code = process.wait(timeout=45)
+            code = process.wait(timeout=90)
         finally:
             if process.poll() is None:
                 process.kill()

@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { TimerClient } from './lib/client';
+  import { mergeUnedited } from './lib/drafts';
   import { transport, invoke, listen } from './lib/desktop';
-  import { actionLabel, formatTime, phaseLabel, type Snapshot, type Command, type DesktopInfo, type Settings } from './lib/types';
+  import { actionLabel, formatTime, phaseLabel, type Snapshot, type Command, type DesktopInfo, type DesktopState, type DesktopPreferences, type Settings } from './lib/types';
   import Compact from './parts/Compact.svelte';
   import Icon from './parts/Icon.svelte';
 
@@ -14,33 +15,50 @@
   let page = $state('timer');
   let draft = $state<Settings | null>(null);
   let finishDialog = $state<HTMLDialogElement>(null!);
-  let audio: AudioContext | undefined;
-  const client = new TimerClient(transport, incoming => { snapshot = incoming; });
+  let desktop = $state<DesktopState | null>(null);
+  let desktopDraft = $state<DesktopPreferences | null>(null);
+  let desktopDirty = $state(false);
+  function acceptDesktop(incoming: DesktopState) {
+    if (!desktop || incoming.revision >= desktop.revision) {
+      if (desktopDraft && desktop) desktopDraft = mergeUnedited(desktopDraft, desktop.preferences, incoming.preferences);
+      desktop = incoming;
+      if (!desktopDirty) desktopDraft = { ...incoming.preferences };
+    }
+  }
+  $effect(() => { document.documentElement.style.setProperty('--text-scale', String((desktop?.preferences.text_scale ?? 100) / 100)); });
+  const client = new TimerClient(transport, incoming => {
+    if (draft && snapshot) draft = mergeUnedited(draft, snapshot.settings, incoming.settings);
+    snapshot = incoming;
+  });
   let progress = $derived(snapshot?.duration_ms ? Math.min(1, snapshot.active_ms / snapshot.duration_ms) : 0);
   let recentFocus = $derived(snapshot?.records.filter(record => ['focus', 'stopwatch'].includes(record.phase)).reduce((sum, record) => sum + record.active_ms, 0) ?? 0);
 
   async function send(command: Command) {
     if (busy) return;
     busy = true; error = '';
-    try { await client.send(command); } catch (e) { error = String(e); }
+    try { await client.send(command); } catch (e) { reportError(String(e)); }
     finally { busy = false; }
   }
   async function native(command: string) {
     try { await invoke(command); } catch (e) { error = String(e); }
   }
-  async function playSound() {
+  function reportError(message: string) {
+    error = message;
+    if (compact) void invoke('report_desktop_error', { message }).catch(() => {});
+  }
+  async function saveDesktop() {
+    if (!desktopDraft || busy) return;
+    busy = true; error = '';
     try {
-      audio ??= new AudioContext(); await audio.resume();
-      const oscillator = audio.createOscillator(); const gain = audio.createGain();
-      oscillator.frequency.value = 660; gain.gain.setValueAtTime(0.08, audio.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.3);
-      oscillator.connect(gain); gain.connect(audio.destination); oscillator.start(); oscillator.stop(audio.currentTime + 0.3);
-    } catch (e) { error = `Audio unavailable: ${String(e)}`; }
+      const saved = await invoke<DesktopState>('save_desktop_preferences', { preferences: { ...desktopDraft } });
+      desktopDirty = false; acceptDesktop(saved);
+    } catch (e) { error = String(e); }
+    finally { busy = false; }
   }
   function navigate(destination: string) { page = destination; if (destination === 'settings' && snapshot) draft = { ...snapshot.settings }; }
   function primary() {
     if (snapshot?.pending_save) void send({ type: 'retry_save' });
-    else { if (!compact && snapshot?.settings.sound_enabled) { audio ??= new AudioContext(); void audio.resume(); } void send({ type: 'toggle' }); }
+    else void send({ type: 'toggle' });
   }
   function keyboard(event: KeyboardEvent) {
     if (compact || !snapshot || event.target instanceof HTMLInputElement || finishDialog?.open) return;
@@ -56,24 +74,25 @@
       try {
         await client.start();
         info = await invoke<DesktopInfo>('desktop_info');
+        const desktopStop = await listen<DesktopState>('desktop-state', event => acceptDesktop(event.payload));
+        if (disposed) { desktopStop(); return; } else listeners.push(desktopStop);
+        acceptDesktop(await invoke<DesktopState>('get_desktop_state'));
         if (!compact) {
-          for (const [event, callback] of [
-            ['finish-requested', () => finishDialog?.showModal()],
-            ['session-completed', () => { if (snapshot?.settings.sound_enabled) void playSound(); }],
-          ] as const) {
-            const stop = await listen(event, callback); if (disposed) stop(); else listeners.push(stop);
-          }
+          const stop = await listen('finish-requested', () => { if (snapshot?.status !== 'idle' && !snapshot?.pending_save) finishDialog?.showModal(); });
+          if (disposed) stop(); else listeners.push(stop);
+          const errorStop = await listen<string>('desktop-error', event => { error = event.payload; });
+          if (disposed) errorStop(); else listeners.push(errorStop);
         }
       } catch (e) { if (!disposed) error = String(e); }
     }
     void register();
-    return () => { disposed = true; client.dispose(); listeners.forEach(stop => stop()); void audio?.close(); };
+    return () => { disposed = true; client.dispose(); listeners.forEach(stop => stop()); };
   });
 </script>
 
 <svelte:window onkeydown={keyboard} />
 {#if compact && snapshot}
-  <Compact state={snapshot} {busy} send={primary} error={message => { error = message; void invoke('open_main'); }} />
+  <Compact state={snapshot} {busy} send={primary} error={reportError} />
 {:else if compact}
   <div class="compact-loading" role="status">{error ? 'Needs attention' : 'Connecting…'}</div>
 {:else}
@@ -97,6 +116,7 @@
         <div class="empty-state"><Icon name="timer" size={40} /><h2>{error ? 'Desktop connection unavailable' : 'Connecting to your timer…'}</h2><p>{error ? 'Launch the installed app or use npm run tauri dev.' : 'Your session is managed on this device.'}</p></div>
       {:else if page === 'timer'}
         {#if snapshot.recovered}<div class="recovery-banner" role="status">Your previous session was restored paused. Resume when you’re ready; time while the app was closed is excluded.</div>{/if}
+        {#if snapshot.interruption}<div class="recovery-banner" role="status">Paused before {snapshot.interruption === 'sleep' ? 'Windows suspended' : 'Windows locked'}. Resume when you’re ready; time while paused is excluded.</div>{/if}
         <div class="timer-layout">
           <section class="timer-card" aria-label="Timer">
             <div class="mode-switch" role="group" aria-label="Timer mode">
@@ -132,8 +152,24 @@
             <label class="checkbox-row"><input type="checkbox" bind:checked={draft.sound_enabled} />Play a completion tone</label><div class="form-actions"><button class="primary" type="submit" disabled={busy || snapshot.pending_save}>Save preferences</button><button class="secondary" type="button" onclick={() => { draft = { ...snapshot!.settings }; }}>Reset changes</button></div>
           </form>
         </section>
-        <section class="settings-card desktop-checks"><div class="card-title"><Icon name="check" /><h2>Desktop checks</h2></div><p class="muted">Use these on your native platform while we validate the beta.</p><div class="form-actions"><button class="secondary" onclick={() => void native('test_notification')}>Test notification</button><button class="secondary" onclick={() => void playSound()}>Test sound</button></div>
+        {#if desktopDraft && desktop}
+        <section class="settings-card"><div class="card-title"><Icon name="compact" /><h2>Desktop preferences</h2></div>
+          <form onsubmit={event => { event.preventDefault(); void saveDesktop(); }} oninput={() => { desktopDirty = true; }}>
+            <div class="settings-grid"><label>Tone volume<span class="input-unit"><input type="range" min="0" max="100" step="5" bind:value={desktopDraft.volume} />{desktopDraft.volume}%</span></label>
+              <label>Compact text size<span class="input-unit"><select bind:value={desktopDraft.text_scale}>{#each [100, 125, 150, 200] as scale}<option value={scale}>{scale}%</option>{/each}</select></span></label></div>
+            <label class="checkbox-row"><input type="checkbox" bind:checked={desktopDraft.pinned} />Keep compact timer on top</label>
+            <label class="checkbox-row"><input type="checkbox" bind:checked={desktopDraft.notifications} />Send completion notifications</label>
+            <p class="muted">Notification delivery also depends on Windows notification settings and Focus Assist. Test the installed app.</p>
+            <label class="checkbox-row"><input type="checkbox" bind:checked={desktopDraft.shortcuts_enabled} />Enable global shortcuts</label>
+            <div class="settings-grid"><label>Global timer shortcut<input aria-label="Global timer shortcut" type="text" class="shortcut-input" maxlength="100" required bind:value={desktopDraft.timer_shortcut} /></label><label>Open main shortcut<input aria-label="Open main shortcut" type="text" class="shortcut-input" maxlength="100" required bind:value={desktopDraft.open_shortcut} /></label></div>
+            <p class="muted">Use Control/Command, Alt or Super plus a key. Global shortcuts work while another app is focused; in-app Space always remains available.</p>
+            <div class="form-actions"><button class="primary" type="submit" disabled={busy}>Save desktop preferences</button><button class="secondary" type="button" onclick={() => { desktopDirty = false; desktopDraft = { ...desktop!.preferences }; }}>Reset desktop changes</button></div>
+          </form>
+        </section>
+        {/if}
+        <section class="settings-card desktop-checks"><div class="card-title"><Icon name="check" /><h2>Desktop checks</h2></div><p class="muted">Use these on your native platform while we validate the beta.</p><div class="form-actions"><button class="secondary" onclick={() => void native('test_notification')}>Test notification</button><button class="secondary" onclick={() => void native('test_sound')}>Test sound</button><button class="secondary" onclick={() => void native('stop_sound')}>Stop preview</button></div>
           {#if info}<dl><dt>Platform</dt><dd>{info.os} · {info.arch}</dd><dt>Tray</dt><dd>{info.tray}</dd><dt>Beta data</dt><dd class="data-path">{info.data_directory}</dd></dl>{/if}
+          {#if desktop}<dl><dt>Shortcuts</dt><dd>{desktop.shortcuts}</dd><dt>Audio</dt><dd>{desktop.audio_status}</dd><dt>Notifications</dt><dd>{desktop.notification_status}</dd><dt>Sleep / lock</dt><dd>{desktop.power_status}</dd></dl>{/if}
           <p class="muted">Closing the app checkpoints an active session for paused recovery. Existing Python data stays in its own profile.</p>
         </section>
       {/if}

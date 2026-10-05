@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-05",
+  "base_revision": "1c362b93a3cb6bc0172ff0d42703ae55b6debe5c",
+  "working_tree_changes": true,
+  "environment": {
+    "architecture": "x64",
+    "version": "10.0.26300",
+    "node": "24.19.0",
+    "rust": "1.99.0",
+    "npm": "11.17.0",
+    "python": "3.12.15",
+    "dpi": 120,
+    "os": "Windows 11 Home"
+  },
+  "installer": {
+    "path": "desktop/target/release/bundle/nsis/Pomodoro Beta_0.1.0-beta.1_x64-setup.exe",
+    "install_ui_uninstall_passed": true,
+    "sha256": "25efa34d7156ac78eaeadbbdbc8ad94c331e92e2c1bb0c79c069e44b1a089a3d",
+    "size_bytes": 3055428,
+    "signed": false
+  },
+  "tests": {
+    "clippy_normal_and_smoke": "passed",
+    "frontend_unit": 6,
+    "rustfmt": "passed",
+    "native_ipc_rendered_smoke": "passed",
+    "rust_native": 4,
+    "rust_core": 16,
+    "browser_ui": 6
+  },
+  "installed_windows_uia": {
+    "passed": true,
+    "checks": [
+      "UIA start/pause/resume/confirmation and one SQLite record",
+      "native compact client size 200 x 44 logical pixels",
+      "compact controls and accessible reopen of minimized main",
+      "real global shortcut keys while another window has focus",
+      "native audio output device accepted playback; hearing requires manual confirmation",
+      "notification test requested; delivery requires manual confirmation",
+      "second instance exits while original remains active",
+      "normal close checkpoints unfinished work; driver absent",
+      "normal restart restores paused without process-down duration"
+    ],
+    "dpi": 120
+  },
+  "manual_pending": [
+    "real suspend/wake and lock/unlock",
+    "Narrator",
+    "tray visibility",
+    "monitor removal and remaining display scales",
+    "tone audibility and notification receipt: user missed test"
+  ],
+  "other_platforms": "macOS/Linux-specific work deferred at user request; mandatory support gate remains open",
+  "final_installed_windows_uia": {
+    "passed": true,
+    "checks": [
+      "UIA start/pause/resume/confirmation and one SQLite record",
+      "native compact client size 200 x 44 logical pixels",
+      "compact controls and accessible reopen of minimized main",
+      "real global shortcut keys while another window has focus",
+      "second instance exits while original remains active",
+      "normal close checkpoints unfinished work; driver absent",
+      "normal restart restores paused without process-down duration"
+    ],
+    "dpi": 120
+  }
+}

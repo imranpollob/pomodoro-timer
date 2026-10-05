@@ -11,10 +11,19 @@ export interface Snapshot {
   active_ms: number; duration_ms: number | null; cycle: number; cycle_interval: number;
   settings: Settings; revision: number; recovered: boolean; pending_save: boolean;
   last_error: string | null; records: SessionRecord[];
+  interruption?: string | null;
 }
 export type Command = { type: 'toggle' | 'pause' | 'finish' | 'retry_save' }
   | { type: 'set_mode'; mode: Phase } | { type: 'configure'; settings: Settings };
 export interface DesktopInfo { os: string; arch: string; tray: string; data_directory: string }
+export interface DesktopPreferences {
+  volume: number; text_scale: number; pinned: boolean; notifications: boolean;
+  shortcuts_enabled: boolean; timer_shortcut: string; open_shortcut: string;
+}
+export interface DesktopState {
+  revision: number; preferences: DesktopPreferences; shortcuts: string;
+  notification_status: string; audio_status: string; power_status: string;
+}
 export const phaseLabel: Record<Phase, string> = {
   focus: 'Focus', short_break: 'Short break', long_break: 'Long break', stopwatch: 'Stopwatch',
 };

@@ -38,6 +38,7 @@
     aria-label={`${phaseLabel[state.phase]}, ${display}. Open main window`}
     title={`${phaseLabel[state.phase]} · ${state.status}. Double-click to open main window. Right-click for actions.`}
     ondblclick={() => void desktop('open_main')}
+    onclick={() => void desktop('open_main')}
     onkeydown={event => { if (event.key === 'Enter') { event.preventDefault(); void desktop('open_main'); } }}>{display}</span>
   <button class="compact-action" aria-label={actionLabel(state)} disabled={busy || state.pending_save}
     onclick={send}><Icon name={state.status === 'running' ? 'pause' : 'play'} size={19} /></button>

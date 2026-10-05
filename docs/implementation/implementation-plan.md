@@ -24,7 +24,7 @@ The main timer answers what you are focusing on, how much time remains, and what
 
 Compact mode targets **200 × 44 logical pixels** for countdown at default text scale, growing to about **240 × 44** for hours-based stopwatch time. It shows only time, a small phase indicator, and **one play/pause button**. Task text, title bar, pin, expand, stop, settings, and navigation buttons do not occupy the strip.
 
-Double-clicking the time or its keyboard equivalent opens the main window. Right-click or Shift+F10 opens the accessible menu for pinning, sound, finishing, and exit. A task tooltip provides context. Larger text grows the strip rather than clipping digits. The previous 340 × 110 mockup is superseded.
+Clicking/double-clicking the time, native accessibility Invoke, or its keyboard equivalent opens the main window. Right-click or Shift+F10 opens the accessible menu for pinning, sound, finishing, and exit. A task tooltip provides context. Larger text grows the strip rather than clipping digits. The previous 340 × 110 mockup is superseded.
 
 ### Tasks, reports, settings, and supporting windows
 
@@ -102,7 +102,7 @@ Keep `src/`, the current tests, and current packaging working while the new app 
 - [ ] M1.7 Write architecture decisions for stack, timer/sleep semantics, storage, supported platform baselines, sync protocol requirements, and release distribution.
 - [ ] M1.8 Decide a revision-aware sync provider or protocol implementation. Record its conditional-write/operation guarantees, migration support, privacy behavior, credentials, hosting responsibility, and recurring costs. Leave vendor selection open until these facts are established.
 
-**Current progress:** M1.1 is implemented. M1.2–M1.5 have a working prototype and initial automated evidence: 12 Rust tests, four frontend unit tests, four browser UI tests, and native Linux IPC/SQLite smoke. A workflow builds normal unsigned beta packages for all three platforms; remote results and physical desktop acceptance remain pending. [ADR 0001](architecture/0001-prototype-boundaries.md) records provisional boundaries. Explicit suspend adapters, global shortcuts, native audio/permission handling and remaining UI surfaces are still open.
+**Current progress, October 5:** M1.1 is implemented and Windows launch is user-confirmed. The Windows integration batch adds native audio, notification opt-in, editable global shortcuts/conflict handling, persisted placement/pinning, 100–200% compact text, and Windows suspend/lock interruption. Automated evidence: 20 Rust tests, six frontend unit tests, six browser UI tests, native rendered-control/IPC smoke, and normal Windows UI Automation. The unsigned NSIS package passes current-user install/UI/uninstall checks. See the [platform record](platform-validation.md) for evidence and remaining human checks. At the user's request, macOS/Linux-specific work waits until they are on those platforms; M1.2–M1.8 and the mandatory three-platform gate remain open. [ADR 0002](architecture/0002-windows-integrations.md) records these integration boundaries.
 
 **Exit:** the mandatory timer/task/history interaction path is viable on all three OSs, desktop capability results are recorded, and the selected stack has no unresolved mandatory-platform blocker. If it fails, evaluate Qt before growing the Tauri implementation. Revised estimates and support policy are recorded.
 

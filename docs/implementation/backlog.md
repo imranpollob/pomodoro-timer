@@ -2,6 +2,8 @@
 
 Execution companion to [implementation-plan.md](implementation-plan.md). Its milestone checkboxes are the source of completion status. B01–B04/M0 are closed following the user's confirmation that three-OS CI passes. **B05 is in progress:** M1.1 scaffolding is implemented in [`desktop/`](../../desktop/README.md); M1.2 package/capability acceptance remains open. See the [implementation log](implementation-log.md) and [native checklist](platform-validation.md) for evidence and limits. This file groups tasks into reviewable change sets.
 
+October 5: Windows B05/B06 integration and automated installed-build checks are implemented. Physical Windows power/assistive/monitor/delivery checks remain, and macOS/Linux-specific work is deferred until the user is on those platforms. This does not close the three-platform M1 gate or later feature-parity batches.
+
 ## First batch: stabilize timer and data
 
 UI planning now has a [complete revision-2 gallery](mockups/v2/README.md) and [window/state inventory](ui-design-spec.md). B07 must resolve that inventory before B11 grows the app UI. A static board does not mark an implementation task complete.

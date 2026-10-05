@@ -10,6 +10,21 @@ use tauri::{
     tray::TrayIconBuilder,
 };
 use tauri_plugin_notification::NotificationExt;
+mod audio;
+mod controls;
+mod geometry;
+#[cfg(windows)]
+mod power;
+use controls::{Controls, DesktopState, Preferences};
+
+fn report_error(app: &tauri::AppHandle, message: &str) {
+    let _ = app.emit("desktop-error", message);
+    let _ = show_main(app);
+}
+#[tauri::command]
+fn report_desktop_error(app: tauri::AppHandle, message: String) {
+    report_error(&app, &message.chars().take(2000).collect::<String>());
+}
 
 #[derive(Clone, serde::Serialize)]
 struct DesktopInfo {
@@ -59,7 +74,13 @@ fn request_exit(app: &tauri::AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
         let service = app.state::<TimerService>();
         match service.command(Command::Pause) {
-            Ok(snapshot) if !snapshot.pending_save => app.exit(0),
+            Ok(snapshot) if !snapshot.pending_save => {
+                if let Err(error) = app.state::<geometry::GeometryService>().flush() {
+                    report_error(&app, &format!("Could not save window placement: {error}"));
+                } else {
+                    app.exit(0);
+                }
+            }
             _ => {
                 let _ = show_main(&app);
             }
@@ -83,6 +104,7 @@ fn open_compact(app: tauri::AppHandle) -> Result<(), String> {
         .get_webview_window("compact")
         .ok_or("Compact window unavailable")?;
     compact.show().map_err(|e| e.to_string())?;
+    geometry::ensure_visible(&compact, None)?;
     compact.set_focus().map_err(|e| e.to_string())?;
     // Main stays available: a missing Linux tray never strands the app.
     Ok(())
@@ -98,15 +120,52 @@ fn resize_compact(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), 
         .ok_or("Compact window unavailable")?;
     window
         .set_size(tauri::LogicalSize::new(width, height))
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    geometry::ensure_visible(&window, None)
 }
 
 #[tauri::command]
-fn set_pin(app: tauri::AppHandle, pinned: bool) -> Result<(), String> {
-    app.get_webview_window("compact")
-        .ok_or("Compact window unavailable")?
-        .set_always_on_top(pinned)
-        .map_err(|e| e.to_string())
+async fn set_pin(app: tauri::AppHandle, pinned: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let controls = app.state::<Controls>();
+        let mut preferences = controls.snapshot().preferences;
+        preferences.pinned = pinned;
+        controls.save(&app, preferences).map(|_| ())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn get_desktop_state(controls: State<'_, Controls>) -> DesktopState {
+    controls.snapshot()
+}
+
+#[tauri::command]
+async fn save_desktop_preferences(
+    app: tauri::AppHandle,
+    preferences: Preferences,
+) -> Result<DesktopState, String> {
+    tauri::async_runtime::spawn_blocking(move || app.state::<Controls>().save(&app, preferences))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn test_sound(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let volume = app.state::<Controls>().snapshot().preferences.volume;
+        let result = app.state::<audio::AudioService>().play(volume);
+        app.state::<Controls>().audio_status(&app, &result);
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn stop_sound(audio: State<'_, audio::AudioService>) {
+    audio.stop();
 }
 
 #[tauri::command]
@@ -175,15 +234,20 @@ fn dispatch_menu(app: &tauri::AppHandle, id: &str) {
             let _ = open_compact(app.clone());
         }
         "toggle" => {
-            let _ = app.state::<TimerService>().command(Command::Toggle);
+            if let Err(error) = app.state::<TimerService>().command(Command::Toggle) {
+                report_error(app, &error);
+            }
         }
         "finish" => {
             let _ = show_main(app);
             let _ = app.emit("finish-requested", ());
         }
         "pin" => {
-            if let Some(w) = app.get_webview_window("compact") {
-                let _ = w.set_always_on_top(!w.is_always_on_top().unwrap_or(false));
+            let controls = app.state::<Controls>();
+            let mut preferences = controls.snapshot().preferences;
+            preferences.pinned = !preferences.pinned;
+            if let Err(error) = controls.save(app, preferences) {
+                report_error(app, &error);
             }
         }
         "sound" => {
@@ -205,6 +269,15 @@ pub fn run() {
             let _ = show_main(app);
         }))
         .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if let Some(controls) = app.try_state::<Controls>() {
+                        controls.handle(app, shortcut, event.state());
+                    }
+                })
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             timer_command,
@@ -214,7 +287,12 @@ pub fn run() {
             resize_compact,
             set_pin,
             compact_menu,
-            test_notification
+            test_notification,
+            get_desktop_state,
+            save_desktop_preferences,
+            test_sound,
+            stop_sound,
+            report_desktop_error
         ])
         .setup(|app| {
             let path = std::env::var_os("POMODORO_BETA_DATA_DIR")
@@ -233,16 +311,62 @@ pub fn run() {
                     }
                 },
                 move |record| {
-                    let _ = notification.emit("session-completed", &record);
-                    let _ = notification
-                        .notification()
-                        .builder()
-                        .title("Session complete")
-                        .body("Your next session is ready when you are.")
-                        .show();
+                    let app = notification.clone();
+                    tauri::async_runtime::spawn_blocking(move || {
+                        let _ = app.emit("session-completed", &record);
+                        let controls = app.state::<Controls>();
+                        let preferences = controls.snapshot().preferences;
+                        if app
+                            .state::<TimerService>()
+                            .snapshot()
+                            .is_ok_and(|s| s.timer.settings.sound_enabled)
+                        {
+                            let result =
+                                app.state::<audio::AudioService>().play(preferences.volume);
+                            controls.audio_status(&app, &result);
+                            if let Err(error) = result {
+                                report_error(&app, &error);
+                            }
+                        }
+                        if preferences.notifications
+                            && let Err(error) = app
+                                .notification()
+                                .builder()
+                                .title("Session complete")
+                                .body("Your next session is ready when you are.")
+                                .show()
+                        {
+                            report_error(&app, &error.to_string());
+                        }
+                    });
                 },
             )?;
+            let controls = Controls::load(&service)?;
+            let (geometry, placements) = geometry::GeometryService::start(service.clone())?;
+            app.manage(controls);
+            app.manage(audio::AudioService::start()?);
+            app.manage(geometry);
             app.manage(service);
+            for (label, placement) in placements {
+                if let Some(window) = app.get_webview_window(&label) {
+                    geometry::restore(&window, &placement)?;
+                }
+            }
+            app.state::<Controls>().initialize(app.handle());
+            #[cfg(windows)]
+            match power::PowerListener::start(
+                app.handle().clone(),
+                app.state::<TimerService>().inner().clone(),
+            ) {
+                Ok(listener) => {
+                    app.manage(listener);
+                    app.state::<Controls>().power_status(
+                        "Windows suspend/lock listener active; interrupted sessions stay paused."
+                            .into(),
+                    );
+                }
+                Err(error) => app.state::<Controls>().power_status(error),
+            }
             let open = MenuItem::with_id(app, "open", "Open Pomodoro", true, None::<&str>)?;
             let compact = MenuItem::with_id(app, "compact", "Compact timer", true, None::<&str>)?;
             let toggle =
@@ -269,6 +393,14 @@ pub fn run() {
         })
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
         .on_window_event(|window, event| {
+            if matches!(
+                event,
+                tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
+            ) && let Some(geometry) =
+                window.app_handle().try_state::<geometry::GeometryService>()
+            {
+                geometry.observe(window);
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 if window.label() == "compact" {

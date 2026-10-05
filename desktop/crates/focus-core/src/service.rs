@@ -16,6 +16,7 @@ pub struct Snapshot {
     pub pending_save: bool,
     pub last_error: Option<String>,
     pub records: Vec<Record>,
+    pub interruption: Option<String>,
 }
 
 pub trait Clock: Send + Sync + 'static {
@@ -48,11 +49,15 @@ impl Clock for SystemClock {
 enum Request {
     Read(mpsc::Sender<Snapshot>),
     Apply(Command, mpsc::Sender<Result<Snapshot, String>>),
+    Interrupt(String, u64, mpsc::Sender<Result<Snapshot, String>>),
+    ReadPreference(String, mpsc::Sender<Result<Option<String>, String>>),
+    SavePreference(String, String, mpsc::Sender<Result<(), String>>),
 }
 
 #[derive(Clone)]
 pub struct TimerService {
     sender: mpsc::Sender<Request>,
+    clock: Arc<dyn Clock>,
 }
 
 impl TimerService {
@@ -66,20 +71,41 @@ impl TimerService {
         let mut recovered = engine.has_active();
         let mut records = store.records()?;
         let (sender, receiver) = mpsc::channel();
+        let client_clock = clock.clone();
         thread::Builder::new()
             .name("focus-authority".into())
             .spawn(move || {
                 let mut revision = 0;
                 let mut last_error = None;
                 let mut pending: Option<Command> = None;
+                let mut interruption = None;
                 let mut checkpoint_at = clock.monotonic_ms();
                 let mut published_at = checkpoint_at;
                 loop {
-                    let request = match receiver.recv_timeout(Duration::from_millis(100)) {
+                    let mut request = match receiver.recv_timeout(Duration::from_millis(100)) {
                         Ok(r) => Some(r),
                         Err(mpsc::RecvTimeoutError::Timeout) => None,
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     };
+                    let mut interrupted_at = None;
+                    match request.take() {
+                        Some(Request::ReadPreference(key, reply)) => {
+                            let _ = reply.send(store.preference(&key));
+                            continue;
+                        }
+                        Some(Request::SavePreference(key, payload, reply)) => {
+                            let _ = reply.send(store.save_preference(&key, &payload));
+                            continue;
+                        }
+                        Some(Request::Interrupt(reason, observed, reply)) => {
+                            interrupted_at = Some(observed);
+                            if engine.running() {
+                                interruption = Some(reason);
+                            }
+                            request = Some(Request::Apply(Command::Pause, reply));
+                        }
+                        other => request = other,
+                    }
                     let now = clock.monotonic_ms();
                     let snapshot =
                         |engine: &Engine,
@@ -87,13 +113,15 @@ impl TimerService {
                          recovered,
                          pending: &Option<Command>,
                          last_error: &Option<String>,
-                         records: &Vec<Record>| Snapshot {
+                         records: &Vec<Record>,
+                         interruption: &Option<String>| Snapshot {
                             timer: engine.view(now),
                             revision,
                             recovered,
                             pending_save: pending.is_some(),
                             last_error: last_error.clone(),
                             records: records.clone(),
+                            interruption: interruption.clone(),
                         };
                     if let Some(Request::Read(reply)) = &request {
                         let _ = reply.send(snapshot(
@@ -103,6 +131,7 @@ impl TimerService {
                             &pending,
                             &last_error,
                             &records,
+                            &interruption,
                         ));
                     }
                     let automatic = request.is_none()
@@ -142,7 +171,11 @@ impl TimerService {
                         let transition = if periodic {
                             Ok(None)
                         } else {
-                            candidate.apply(command.clone(), now, clock.unix_ms())
+                            candidate.apply(
+                                command.clone(),
+                                interrupted_at.map_or(now, |at| at.min(now)),
+                                clock.unix_ms(),
+                            )
                         };
                         match transition {
                             Err(error) => {
@@ -158,6 +191,9 @@ impl TimerService {
                                     pending = None;
                                     last_error = None;
                                     checkpoint_at = now;
+                                    if engine.running() || !engine.has_active() {
+                                        interruption = None;
+                                    }
                                     if let Some(record) = record {
                                         records.insert(0, record.clone());
                                         records.truncate(20);
@@ -167,7 +203,7 @@ impl TimerService {
                                     }
                                 }
                                 Err(error) => {
-                                    engine.pause(now);
+                                    engine.pause(interrupted_at.map_or(now, |at| at.min(now)));
                                     pending = Some(command);
                                     last_error =
                                         Some(format!("Could not save on this device: {error}"));
@@ -182,6 +218,7 @@ impl TimerService {
                             &pending,
                             &last_error,
                             &records,
+                            &interruption,
                         );
                         publish(state.clone());
                         published_at = now;
@@ -197,13 +234,17 @@ impl TimerService {
                             &pending,
                             &last_error,
                             &records,
+                            &interruption,
                         ));
                         published_at = now;
                     }
                 }
             })
             .map_err(|e| e.to_string())?;
-        Ok(Self { sender })
+        Ok(Self {
+            sender,
+            clock: client_clock,
+        })
     }
     pub fn snapshot(&self) -> Result<Snapshot, String> {
         let (send, receive) = mpsc::channel();
@@ -218,6 +259,37 @@ impl TimerService {
         let (send, receive) = mpsc::channel();
         self.sender
             .send(Request::Apply(command, send))
+            .map_err(|e| e.to_string())?;
+        receive
+            .recv_timeout(Duration::from_secs(10))
+            .map_err(|e| e.to_string())?
+    }
+    pub fn interrupt(&self, reason: &str) -> Result<Snapshot, String> {
+        let (send, receive) = mpsc::channel();
+        self.sender
+            .send(Request::Interrupt(
+                reason.into(),
+                self.clock.monotonic_ms(),
+                send,
+            ))
+            .map_err(|e| e.to_string())?;
+        receive
+            .recv_timeout(Duration::from_secs(1))
+            .map_err(|e| e.to_string())?
+    }
+    pub fn preference(&self, key: &str) -> Result<Option<String>, String> {
+        let (send, receive) = mpsc::channel();
+        self.sender
+            .send(Request::ReadPreference(key.into(), send))
+            .map_err(|e| e.to_string())?;
+        receive
+            .recv_timeout(Duration::from_secs(10))
+            .map_err(|e| e.to_string())?
+    }
+    pub fn save_preference(&self, key: &str, payload: &str) -> Result<(), String> {
+        let (send, receive) = mpsc::channel();
+        self.sender
+            .send(Request::SavePreference(key.into(), payload.into(), send))
             .map_err(|e| e.to_string())?;
         receive
             .recv_timeout(Duration::from_secs(10))
@@ -240,6 +312,83 @@ mod tests {
         fn unix_ms(&self) -> u64 {
             1000
         }
+    }
+    #[test]
+    fn suspend_and_lock_freeze_time_until_explicit_resume() {
+        let clock = Arc::new(FakeClock(AtomicU64::new(0)));
+        let service = TimerService::spawn(
+            Store::open(Path::new(":memory:")).unwrap(),
+            clock.clone(),
+            |_| {},
+            |_| {},
+        )
+        .unwrap();
+        service.command(Command::Toggle).unwrap();
+        clock.0.store(5500, Ordering::SeqCst);
+        let paused = service.interrupt("sleep").unwrap();
+        assert_eq!(paused.interruption.as_deref(), Some("sleep"));
+        assert_eq!(paused.timer.active_ms, 5500);
+        clock.0.store(3_600_000, Ordering::SeqCst);
+        assert_eq!(service.snapshot().unwrap().timer.active_ms, 5500);
+        assert!(
+            service
+                .command(Command::Toggle)
+                .unwrap()
+                .interruption
+                .is_none()
+        );
+        clock.0.store(3_602_000, Ordering::SeqCst);
+        let locked = service.interrupt("lock").unwrap();
+        assert_eq!(locked.timer.active_ms, 7500);
+        assert_eq!(locked.interruption.as_deref(), Some("lock"));
+        assert_eq!(
+            service.command(Command::Finish).unwrap().records[0].active_ms,
+            7500
+        );
+    }
+    #[test]
+    fn delayed_suspend_processing_uses_notification_time_not_wake_time() {
+        let clock = Arc::new(FakeClock(AtomicU64::new(0)));
+        let service = TimerService::spawn(
+            Store::open(Path::new(":memory:")).unwrap(),
+            clock.clone(),
+            |_| {},
+            |_| {},
+        )
+        .unwrap();
+        service.command(Command::Toggle).unwrap();
+        clock.0.store(3_600_000, Ordering::SeqCst);
+        let (send, receive) = mpsc::channel();
+        service
+            .sender
+            .send(Request::Interrupt("sleep".into(), 5500, send))
+            .unwrap();
+        let paused = receive
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
+        assert_eq!(paused.timer.active_ms, 5500);
+        assert_eq!(paused.timer.status, "paused");
+        assert!(paused.records.is_empty());
+    }
+    #[test]
+    fn desktop_preferences_use_the_same_serialized_store() {
+        let service = TimerService::spawn(
+            Store::open(Path::new(":memory:")).unwrap(),
+            Arc::new(FakeClock(AtomicU64::new(0))),
+            |_| {},
+            |_| {},
+        )
+        .unwrap();
+        assert!(service.preference("desktop").unwrap().is_none());
+        service
+            .save_preference("desktop", "{\"pinned\":false}")
+            .unwrap();
+        assert!(service.save_preference("desktop", "broken").is_err());
+        assert_eq!(
+            service.preference("desktop").unwrap().as_deref(),
+            Some("{\"pinned\":false}")
+        );
     }
     #[test]
     fn failed_finalization_freezes_duration_and_blocks_new_sessions() {
