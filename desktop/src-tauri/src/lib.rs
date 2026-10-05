@@ -1,5 +1,5 @@
 use focus_core::{
-    Command,
+    Command, Settings, Task,
     service::{Snapshot, SystemClock, TimerService},
     store::Store,
 };
@@ -26,14 +26,6 @@ fn report_desktop_error(app: tauri::AppHandle, message: String) {
     report_error(&app, &message.chars().take(2000).collect::<String>());
 }
 
-#[derive(Clone, serde::Serialize)]
-struct DesktopInfo {
-    os: String,
-    arch: String,
-    tray: String,
-    data_directory: String,
-}
-
 #[tauri::command]
 async fn get_snapshot(
     service: State<'_, TimerService>,
@@ -56,6 +48,86 @@ async fn timer_command(
 ) -> Result<Snapshot, String> {
     let service = service.inner().clone();
     tauri::async_runtime::spawn_blocking(move || service.command(command))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn list_tasks(service: State<'_, TimerService>) -> Result<Vec<Task>, String> {
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || service.tasks())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn create_task(title: String, service: State<'_, TimerService>) -> Result<Task, String> {
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || service.create_task(title))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn rename_task(
+    id: String,
+    title: String,
+    service: State<'_, TimerService>,
+) -> Result<Task, String> {
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || service.rename_task(id, title))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn complete_task(
+    id: String,
+    completed: bool,
+    service: State<'_, TimerService>,
+) -> Result<(), String> {
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || service.complete_task(id, completed))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_task(id: String, service: State<'_, TimerService>) -> Result<(), String> {
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || service.delete_task(id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn daily_totals(
+    start_unix_ms: u64,
+    end_unix_ms: u64,
+    service: State<'_, TimerService>,
+) -> Result<focus_core::store::DailyTotals, String> {
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || service.daily_totals(start_unix_ms, end_unix_ms))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn reset_reports(service: State<'_, TimerService>) -> Result<Snapshot, String> {
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || service.reset_reports())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn report_records(
+    start_unix_ms: u64,
+    end_unix_ms: u64,
+    service: State<'_, TimerService>,
+) -> Result<Vec<focus_core::Record>, String> {
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || service.report_records(start_unix_ms, end_unix_ms))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -89,11 +161,6 @@ fn request_exit(app: &tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn desktop_info(info: State<'_, DesktopInfo>) -> DesktopInfo {
-    info.inner().clone()
-}
-
-#[tauri::command]
 fn open_main(app: tauri::AppHandle) -> Result<(), String> {
     show_main(&app)
 }
@@ -108,6 +175,14 @@ fn open_compact(app: tauri::AppHandle) -> Result<(), String> {
     compact.set_focus().map_err(|e| e.to_string())?;
     // Main stays available: a missing Linux tray never strands the app.
     Ok(())
+}
+
+#[tauri::command]
+fn close_compact(app: tauri::AppHandle) -> Result<(), String> {
+    app.get_webview_window("compact")
+        .ok_or("Compact window unavailable")?
+        .hide()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -137,6 +212,16 @@ async fn set_pin(app: tauri::AppHandle, pinned: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn timer_defaults() -> Settings {
+    Settings::default()
+}
+
+#[tauri::command]
+fn desktop_defaults() -> Preferences {
+    Preferences::default()
+}
+
+#[tauri::command]
 fn get_desktop_state(controls: State<'_, Controls>) -> DesktopState {
     controls.snapshot()
 }
@@ -149,23 +234,6 @@ async fn save_desktop_preferences(
     tauri::async_runtime::spawn_blocking(move || app.state::<Controls>().save(&app, preferences))
         .await
         .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn test_sound(app: tauri::AppHandle) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let volume = app.state::<Controls>().snapshot().preferences.volume;
-        let result = app.state::<audio::AudioService>().play(volume);
-        app.state::<Controls>().audio_status(&app, &result);
-        result
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-fn stop_sound(audio: State<'_, audio::AudioService>) {
-    audio.stop();
 }
 
 #[tauri::command]
@@ -194,29 +262,16 @@ async fn compact_menu(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Re
         None::<&str>,
     )
     .map_err(|e| e.to_string())?;
-    let finish = MenuItem::with_id(
+    let close = MenuItem::with_id(
         &app,
-        "finish",
-        "Finish session / Skip break",
-        snapshot.timer.status != "idle" && !snapshot.pending_save,
+        "close-compact",
+        "Close compact timer",
+        true,
         None::<&str>,
     )
     .map_err(|e| e.to_string())?;
-    let exit =
-        MenuItem::with_id(&app, "exit", "Exit", true, None::<&str>).map_err(|e| e.to_string())?;
-    let menu = Menu::with_items(&app, &[&open, &pin, &sound, &finish, &exit])
-        .map_err(|e| e.to_string())?;
+    let menu = Menu::with_items(&app, &[&close, &open, &pin, &sound]).map_err(|e| e.to_string())?;
     window.popup_menu(&menu).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn test_notification(app: tauri::AppHandle) -> Result<(), String> {
-    app.notification()
-        .builder()
-        .title("Pomodoro Beta")
-        .body("Your desktop notification test.")
-        .show()
-        .map_err(|e| e.to_string())
 }
 
 fn menu_action(app: &tauri::AppHandle, id: &str) {
@@ -259,6 +314,11 @@ fn dispatch_menu(app: &tauri::AppHandle, id: &str) {
             }
         }
         "exit" => request_exit(app),
+        "close-compact" => {
+            if let Some(compact) = app.get_webview_window("compact") {
+                let _ = compact.hide();
+            }
+        }
         _ => {}
     }
 }
@@ -269,29 +329,27 @@ pub fn run() {
             let _ = show_main(app);
         }))
         .plugin(tauri_plugin_notification::init())
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, shortcut, event| {
-                    if let Some(controls) = app.try_state::<Controls>() {
-                        controls.handle(app, shortcut, event.state());
-                    }
-                })
-                .build(),
-        )
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             timer_command,
-            desktop_info,
+            list_tasks,
+            create_task,
+            rename_task,
+            complete_task,
+            delete_task,
+            daily_totals,
+            report_records,
+            reset_reports,
             open_main,
             open_compact,
+            close_compact,
             resize_compact,
             set_pin,
             compact_menu,
-            test_notification,
             get_desktop_state,
             save_desktop_preferences,
-            test_sound,
-            stop_sound,
+            timer_defaults,
+            desktop_defaults,
             report_desktop_error
         ])
         .setup(|app| {
@@ -373,25 +431,28 @@ pub fn run() {
                 MenuItem::with_id(app, "toggle", "Start / Pause / Resume", true, None::<&str>)?;
             let exit = MenuItem::with_id(app, "exit", "Exit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &compact, &toggle, &exit])?;
-            let tray = TrayIconBuilder::with_id("focus-tray")
+            // Tray visibility varies by desktop; the main window stays available when it is missing.
+            let _ = TrayIconBuilder::with_id("focus-tray")
                 .menu(&menu)
-                .tooltip("Pomodoro Beta")
+                .tooltip("Pomodoro")
                 .icon(app.default_window_icon().ok_or("Missing app icon")?.clone())
                 .build(app);
-            app.manage(DesktopInfo {
-                os: std::env::consts::OS.into(),
-                arch: std::env::consts::ARCH.into(),
-                tray: match tray {
-                    Ok(_) => "Created; visibility must be checked on this desktop".into(),
-                    Err(e) => format!("Unavailable: {e}"),
-                },
-                data_directory: path.to_string_lossy().into_owned(),
-            });
             #[cfg(feature = "smoke-test")]
             smoke::start(app.handle().clone());
             Ok(())
         })
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
+        .on_tray_icon_event(|tray, event| {
+            if matches!(
+                event,
+                tauri::tray::TrayIconEvent::Click {
+                    button: tauri::tray::MouseButton::Left,
+                    ..
+                }
+            ) {
+                let _ = show_main(tray.app_handle());
+            }
+        })
         .on_window_event(|window, event| {
             if matches!(
                 event,
@@ -403,16 +464,20 @@ pub fn run() {
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                if window.label() == "compact" {
+                if window.label() == "compact"
+                    || window
+                        .app_handle()
+                        .try_state::<Controls>()
+                        .is_some_and(|controls| controls.snapshot().preferences.close_to_tray)
+                {
                     let _ = window.hide();
-                    let _ = show_main(window.app_handle());
                 } else {
                     request_exit(window.app_handle());
                 }
             }
         })
         .build(tauri::generate_context!())
-        .expect("Unable to start Pomodoro Beta; existing data was left intact");
+        .expect("Unable to start Pomodoro; existing data was left intact");
     app.run(|app, event| {
         if let tauri::RunEvent::ExitRequested {
             code: None, api, ..

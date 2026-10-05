@@ -68,6 +68,7 @@ deb_workspace/
 # Tauri prototype
 desktop/node_modules/
 desktop/target/
+desktop/.demo-profile/
 desktop/src-tauri/gen/
 desktop/test-results/
 desktop/playwright-report/

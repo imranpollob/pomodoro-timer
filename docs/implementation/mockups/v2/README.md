@@ -6,6 +6,9 @@ Read the [UI design specification](../../ui-design-spec.md) for the surface inve
 
 These are generated design concepts, not implemented application screenshots. Some repeated previews and small labels may vary between boards. Follow the written specification when an image differs. Logical dimensions are targets at default text scale, not the physical size of the raster image.
 
+
+> **Scope note (October 5, 2026):** This gallery records broad visual exploration, not the active MVP contract. Use [the concise implementation plan](../../implementation-plan.md) and [MVP UI specification](../../ui-design-spec.md) for current scope. Project management, sync, migration, data import/export, custom themes, and other extended screens are deferred. The implemented Reports page uses rolling 7-day/30-day ranges and custom dates; CSV and Details actions from these concepts are intentionally omitted. Promotional headers and sidebar slogans are also omitted.
+
 ## Board index
 
 | Board | Windows and states |
@@ -178,4 +181,3 @@ Explicit designs for the completed-session next action, save/discard/keep-editin
 All boards were generated using the **built-in image_gen tool**, inspected, and copied into this project. [Exact generation prompts and refinement instructions](prompts.json) accompany the images. [Inspection notes](inspection-notes.md) record design differences that remain illustrative.
 
 The two revision-1 images in the parent directory are retained for historical comparison. They no longer define compact geometry or controls.
-

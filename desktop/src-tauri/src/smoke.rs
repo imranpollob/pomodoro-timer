@@ -22,7 +22,7 @@ pub fn start(app: tauri::AppHandle) {
         let result = probe(&app);
         let payload = match &result {
             Ok(()) => {
-                serde_json::json!({"passed": true, "checks": ["main/compact rendered controls and real IPC", "finish dialog", "SQLite completion/checkpoint", "native pinning", "200% compact text", "placement persistence/clamping", "desktop preference persistence", "Windows suspend/lock and shortcut conflict/registration (Windows only)"]})
+                serde_json::json!({"passed": true, "checks": ["main/compact rendered controls and real IPC", "finish dialog", "SQLite completion/checkpoint", "native pinning", "placement persistence/clamping", "desktop preference persistence", "Windows suspend/lock (Windows only)"]})
             }
             Err(error) => serde_json::json!({"passed": false, "error": error}),
         };
@@ -88,8 +88,10 @@ fn probe(app: &tauri::AppHandle) -> Result<(), String> {
         }
     }
     let checkpoint = service.command(Command::Pause)?;
-    let info = app.state::<DesktopInfo>();
-    let store = Store::open(&std::path::Path::new(&info.data_directory).join("prototype.sqlite3"))?;
+    let profile = std::env::var_os("POMODORO_BETA_DATA_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or(app.path().app_data_dir().map_err(|e| e.to_string())?);
+    let store = Store::open(&profile.join("prototype.sqlite3"))?;
     if store.records()?.len() != 1
         || store.load()?.view(u64::MAX).active_ms != checkpoint.timer.active_ms
     {
@@ -99,7 +101,6 @@ fn probe(app: &tauri::AppHandle) -> Result<(), String> {
     let previous = controls.snapshot().preferences;
     let mut candidate = previous.clone();
     candidate.pinned = false;
-    candidate.text_scale = 200;
     controls.save(app, candidate.clone())?;
     let compact = app.get_webview_window("compact").ok_or("Missing compact")?;
     if compact.is_always_on_top().map_err(|e| e.to_string())? {
@@ -108,7 +109,7 @@ fn probe(app: &tauri::AppHandle) -> Result<(), String> {
     ui_step(
         app,
         "compact",
-        "await until(() => getComputedStyle(document.querySelector('.compact-time')).fontSize === '50px');",
+        "await until(() => getComputedStyle(document.querySelector('.compact-time')).fontSize === '25px');",
     )?;
     geometry::ensure_visible(&compact, Some((1_000_000, 1_000_000)))?;
     app.state::<geometry::GeometryService>()
@@ -117,38 +118,11 @@ fn probe(app: &tauri::AppHandle) -> Result<(), String> {
     if store.preference("windows")?.is_none() || store.preference("desktop")?.is_none() {
         return Err("Desktop preferences or placement were not saved".into());
     }
-    #[cfg(windows)]
-    {
-        use tauri_plugin_global_shortcut::GlobalShortcutExt;
-        candidate.shortcuts_enabled = true;
-        candidate.timer_shortcut = "Control+Alt+Shift+F24".into();
-        candidate.open_shortcut = "Control+Alt+Shift+F23".into();
-        app.global_shortcut()
-            .register(candidate.timer_shortcut.as_str())
-            .map_err(|e| e.to_string())?;
-        if controls.save(app, candidate.clone()).is_ok()
-            || controls.snapshot().preferences != {
-                let mut p = previous.clone();
-                p.pinned = false;
-                p.text_scale = 200;
-                p
-            }
-        {
-            return Err("Shortcut conflict replaced previous preferences".into());
-        }
-        app.global_shortcut()
-            .unregister(candidate.timer_shortcut.as_str())
-            .map_err(|e| e.to_string())?;
-        controls.save(app, candidate)?;
-        if controls.snapshot().shortcuts != "Registered" {
-            return Err("Global shortcuts were not registered".into());
-        }
-    }
     controls.save(app, previous)?;
     ui_step(
         app,
         "main",
-        "Array.from(document.querySelectorAll('nav button')).find(b => b.textContent.trim() === 'Settings').click(); await until(() => Array.from(document.querySelectorAll('label')).find(l => l.textContent.includes('Play a completion tone'))?.querySelector('input'));",
+        "Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Settings').click(); await until(() => Array.from(document.querySelectorAll('label')).find(l => l.textContent.includes('Play a completion tone'))?.querySelector('input'));",
     )?;
     dispatch_menu(app, "sound");
     ui_step(

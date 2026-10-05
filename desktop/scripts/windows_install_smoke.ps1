@@ -11,7 +11,7 @@ if (-not $installDir.StartsWith($workspaceRoot + [IO.Path]::DirectorySeparatorCh
     throw 'Install target must remain inside this workspace.'
 }
 $registryPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
-$existing = Get-ItemProperty -Path "$registryPath\*" -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'Pomodoro Beta'
+$existing = Get-ItemProperty -Path "$registryPath\*" -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'Pomodoro'
 if ($existing) { throw 'A beta installation already exists; refusing to replace or uninstall it.' }
 New-Item -ItemType Directory -Path $probeRoot | Out-Null
 $installed = $false
@@ -21,7 +21,7 @@ try {
     $installed = $true
     $binary = Join-Path $installDir 'pomodoro-desktop-beta.exe'
     if (-not (Test-Path -LiteralPath $binary)) { throw 'Installed executable is missing.' }
-    $registration = Get-ItemProperty -Path "$registryPath\*" -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'Pomodoro Beta'
+    $registration = Get-ItemProperty -Path "$registryPath\*" -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'Pomodoro'
     if (-not $registration -or [IO.Path]::GetFullPath($registration.InstallLocation.Trim('"')).TrimEnd('\') -ne $installDir.TrimEnd('\')) {
         throw 'Installer registration does not match the verified test directory.'
     }
@@ -42,7 +42,7 @@ finally {
             Start-Sleep -Milliseconds 200
         }
         if (Test-Path -LiteralPath (Join-Path $installDir 'pomodoro-desktop-beta.exe')) { throw 'Uninstall left the executable behind.' }
-        $remaining = Get-ItemProperty -Path "$registryPath\*" -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'Pomodoro Beta'
+        $remaining = Get-ItemProperty -Path "$registryPath\*" -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'Pomodoro'
         if ($remaining) { throw 'Uninstall left the beta registration behind.' }
         Write-Output 'Current-user NSIS install/uninstall passed; application data was retained.'
     }

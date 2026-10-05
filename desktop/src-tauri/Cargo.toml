@@ -18,7 +18,6 @@ serde_json.workspace = true
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
-tauri-plugin-global-shortcut = "2"
 rodio = { version = "0.21.1", default-features = false, features = ["playback"] }
 
 [target.'cfg(windows)'.dependencies]

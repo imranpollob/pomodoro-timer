@@ -146,3 +146,140 @@ The user missed the audio/notification test; hearing and receipt remain unconfir
 `desktop/scripts/windows_ui_smoke.py` drives normal artifacts through UI Automation and uses disposable SQLite data. `windows_install_smoke.ps1` refuses to replace an existing beta installation, verifies a workspace-contained target and retains app data during silent uninstall. CI now exercises the installed normal Windows artifact separately from the nondistributed smoke-feature executable. Remote results for this updated workflow are pending.
 
 See [ADR 0002](architecture/0002-windows-integrations.md), the [Windows platform record](platform-validation.md), [machine-readable evidence](windows-validation-2026-10-05.json), and updated [desktop instructions](../../desktop/README.md). The unsigned installer is under `desktop/target/release/bundle/nsis/`; generated binaries, test environments and reports remain ignored. No release, signing, remote sync conversion or legacy-data migration was performed.
+
+## October 5, 2026 — MVP task flow, daily summary, and compact close
+
+The user narrowed the target to high-impact MVP behavior and explicitly removed old Python/JSONBin data migration from scope. Windows remains the first development/acceptance platform; Windows, macOS, and Linux remain mandatory before MVP completion. Projects, cloud sync, import/export, and reset-today remain deferred; Reports and appearance options were selected for MVP in the later feature batch below.
+
+### Implemented
+
+- Compact Escape and the native context menu now hide only the compact window. The application keeps running, the timer continues, and closing no longer unexpectedly focuses the main window. The compact strip retains one visible timer action.
+- SQLite schema 3 adds task records and session task snapshots. The task view supports add, rename, complete/uncomplete and remove. Selecting a task applies to the next session; active sessions retain their original task title in history even if that task is later edited or removed.
+- The timer page now shows today’s local-calendar-day focus total split into Pomodoro and stopwatch time/session counts. The summary queries all stored records while the Sessions view remains a concise latest-20 list.
+- MVP/backlog, UI compact behavior, contributor guidance and desktop README now reflect that old-data migration and sync are deferred.
+
+### Validation
+
+`npm run build` passed with 0 Svelte errors and 0 warnings; `cargo check --locked --workspace --all-targets` passed on Windows. No test suite or installed-package/manual Windows acceptance was run for this change. UI behavior, task history attribution, local-day/DST boundaries and the new SQLite migration still need runtime acceptance. Existing Windows physical power/accessibility/monitor/audio/notification checks remain open; macOS/Linux work is deferred until the user is on those platforms.
+
+### UI readability refinement
+
+Removed the timer page's “A MOMENT TO BEGIN” message card and increased the main application typography, including headings, controls, labels, summaries, and muted text. Compact mode sizing and its minimal controls are unchanged. `npm run build` passed with 0 Svelte errors and 0 warnings; no runtime screenshot review was performed for this refinement.
+
+## October 5, 2026 — Reports, automatic transitions, appearance, and demo profile
+
+Removed the promotional page header from Tasks, Sessions, Reports, and Settings. Timer keeps its header and Compact mode entry point.
+
+- Reports query all saved sessions in a selected local-date range (separate from the 20-row recent-session preview), provide week/month presets, custom dates, aggregate and per-day focus summaries, session details, and CSV download.
+- The optional auto-start preference starts the next focus/break phase only after automatic natural completion. Manual finish/skip and stopwatch do not auto-start. The finished record and next active checkpoint are saved atomically.
+- Desktop preferences now include dark/light, main-window scale, reduced motion, and opacity settings. Compact text scaling remains independent. Native transparency and color appearance still require installed Windows, macOS, and Linux checks.
+- Added `desktop/scripts/seed_demo_profile.py`; it idempotently adds 4 tasks and 57 synthetic sessions across the last 28 local calendar days to the selected beta profile, preserving existing settings and records. The current Windows beta profile increased from 2 to 6 tasks and from 8 to 65 sessions. Samples cover focus, short/long breaks, stopwatch, completed, skipped, and interrupted outcomes.
+
+### Verification
+
+`npm run build` passed with 0 Svelte errors/warnings. Playwright passed 8/8 UI checks, including subpage header removal, report detail/CSV download, and persisted appearance preferences. Vitest passed 6/6; Rust core passed 20/20, including date-range queries beyond the latest-20 limit, old-settings compatibility, and manual-versus-automatic completion; native Rust tests passed 4/4; rustfmt and workspace Clippy passed. The demo seeder added 61 rows (4 tasks and 57 sessions) to the existing Windows beta profile, then added 0 rows on a second run. Browser fixture tests do not establish native CSV delivery or native transparency/color output; restart the app to review its seeded Windows profile. macOS/Linux acceptance remains pending until those platforms are available.
+
+## October 5, 2026 — Simplified pages and consistent typography
+
+- Removed the Sessions page; Reports is the only session-history view. Removed CSV export, Details actions, and their unused frontend code/styles.
+- Replaced calendar-week/month presets with **Last 7 days** and **Last 30 days**, including today and the preceding 6/29 local dates. Custom date ranges remain inclusive.
+- Removed the timer's promotional heading and sidebar badge/slogans. Compact mode is available once in the sidebar on every page; navigation resets page scroll and the sidebar stays accessible during long-page scrolling.
+- Standardized main-window text: 16 px body/labels/controls/table text, 20 px section titles, 14 px hints, and 32 px summary metrics. Shortened repeated explanatory text, checked both themes, and improved light-theme borders/completed-task contrast. Compact keeps its independent typography and geometry.
+- Extended the seeder to two calendar months: August 6–October 5 for this run. Added 66 sample sessions to the existing Windows beta profile, bringing the generated demo set to 123 sessions. A repeated seed added zero rows.
+
+Validation: production frontend build passed with zero Svelte errors/warnings; all 9 Playwright checks passed. Following final layout/contrast adjustments, the build and the page/theme review check passed again. Reviewed rendered Timer, Tasks, Reports, and Settings in dark/light themes; verified no page-wide overflow at 660 × 520 and retained compact sizing checks. Updated current documentation and browser-fixture screenshots. Native platform appearance remains a separate acceptance check.
+
+## October 5, 2026 - Settings reduction: System section, global shortcuts, reduce motion
+
+- Removed the Settings System section (sound/notification test buttons, platform/tray/data-folder and audio/notification/power status) and its `desktop_info`, `test_notification`, `test_sound`, and `stop_sound` commands. Completion tone and notifications still work; only the manual test UI is gone.
+- Removed global shortcut functionality end to end: settings UI, preference fields, registration/conflict handling, the Tauri global-shortcut plugin and dependency (plus its lockfile subtree), and both smoke-harness shortcut probes. Tray and in-app Space remain the only timer controls.
+- Removed the reduce-motion preference, its settings checkbox, the `data-reduced-motion` plumbing, and related styles. The OS `prefers-reduced-motion` media query still applies.
+- Stored desktop preferences stay compatible: serde ignores the removed keys in existing profiles, so no migration runs.
+- Updated the desktop README, backlog, UI spec, implementation plan, and platform checklist to match; historical log entries and validation JSON were left as records.
+
+Validation: svelte-check 0 errors/warnings; Playwright 11/11 including a new absence test for the removed settings (observed failing before the change); Vitest 6/6; desktop Rust lib 4/4 including rewritten preference-validation coverage; focus-core 20/20; smoke-test feature check, rustfmt, and workspace Clippy with -D warnings all clean; touched Python scripts compile. The Windows UI Automation and native smoke harnesses were updated but not executed here; they need an unlocked desktop session and built binaries.
+
+## October 5, 2026 - Text-size removal, compact-only opacity, compact redesign, settings audit
+
+- Removed Main text size and Compact text size modification: settings controls, preference fields, validation, zoom/text-scale plumbing, and related tests. Text renders at fixed sizes; old stored scale keys are ignored.
+- Replaced Window background opacity with Compact mode background opacity (60-100%). Main-window surfaces are solid; the setting now drives the compact strip background only.
+- Simplified compact mode: no phase dot, no right-side padding, a smaller 32 px action button with a smaller icon, and a context menu reduced to open/pin/sound/close (finish and exit removed). The 200 x 44 target, drag, keyboard handling, and auto-grow for long stopwatch hours are unchanged.
+- Audited the four remaining settings buttons: both Save buttons were already covered by passing persistence tests, and a new reset test proves both Reset buttons restore saved values. No button defects found.
+
+Validation: svelte-check 0 errors/warnings; Playwright 13/13 including new absence and reset tests (absence observed failing before the change); Vitest 6/6; desktop Rust lib 4/4; smoke-test feature check, rustfmt, and workspace Clippy with -D warnings all clean.
+
+## October 5, 2026 - Compact opacity fix, settings autosave, close-to-tray
+
+- Fixed Compact mode background opacity having no visible effect: the compact window was not transparent, so per-pixel alpha never composited. Added the transparent flag; a new Playwright test asserts the compact background follows the setting. Installed-app confirmation still needed.
+- Settings now save automatically 500 ms after the last edit with a Saving/Saved indicator; invalid timer values are skipped until corrected. Both Save buttons were removed; Reset buttons and Enter-to-save remain.
+- "Close compact timer" moved to the top of the compact context menu.
+- "Keep compact timer on top" was already default-on in code and applied at startup; the reporter's profile has it stored off, so no change was needed.
+- Added close-to-tray: closing the main window hides it to the tray by default while the timer keeps running. The behavior is a persisted setting (default on, including for old profiles via a serde default), tray left-click restores the window, and tray Exit still quits. The Windows UI Automation harness now opts out before its close-and-exit checks.
+
+Validation: svelte-check 0 errors/warnings; Playwright 14/14 including new autosave, opacity, and absence coverage (Save-button absence observed failing before the change; reset timing made deterministic with fake clocks); Vitest 6/6; desktop Rust lib 5/5 including the close-to-tray default test; smoke-test feature check, rustfmt, and workspace Clippy with -D warnings all clean; touched Python script compiles. The Windows UI Automation harness was updated but not executed here.
+
+## October 5, 2026 - Restore-defaults replaces dead reset buttons
+
+- Diagnosis: with autosave, Reset (restore from the last-saved snapshot) is a no-op 500 ms after any edit, which is why the buttons looked broken. Probes confirmed an immediate reset still reverted and cancelled the pending save, while a post-save reset changed nothing.
+- Reworked both buttons into "Restore defaults" / "Restore desktop defaults": they fetch authoritative defaults from new `timer_defaults` / `desktop_defaults` commands, ask for confirmation, and persist immediately through the autosave path.
+- Synced the banner-dismiss test and Windows UI Automation matcher with the shortened recovery copy ("Your previous session was restored.").
+
+Validation: svelte-check 0 errors/warnings; Playwright 14/14 (restore-button absence observed failing before the change); desktop Rust lib 5/5; rustfmt and workspace Clippy with -D warnings clean; touched Python script compiles.
+
+## October 5, 2026 - Checkbox hit area fix
+
+- Settings checkbox rows were full-width labels, so clicking empty space anywhere on the row toggled them. Constrained `.checkbox-row` to its content width; task-list checkboxes were already content-width and needed no change.
+
+Validation: Playwright 15/15 including a new test that clicks empty row space (observed failing before the fix) and the label text.
+
+## October 5, 2026 - Notifications on by default
+
+- "Send completion notifications" is now checked by default for new profiles. Existing profiles keep their stored choice; docs updated from opt-in to on-by-default wording.
+
+Validation: desktop Rust lib 5/5 including the new default assertion (observed failing before the change); Playwright 15/15 with mocks mirroring the new default.
+
+## October 5, 2026 - Focus task dropdown locked to idle
+
+- The timer-page task dropdown is now enabled only when no session is running (idle); it locks during running and paused work so the task is chosen before starting. Backend `select_task` stays permissive so completing or removing the selected task can still clear it mid-session.
+
+Validation: svelte-check 0 errors/warnings; Playwright 16/16 including the new lock test (observed failing before the fix).
+
+## October 5, 2026 - Focus task picker hidden while running
+
+- The Focus task label and dropdown now render only when the timer is idle; they disappear during running and paused sessions and return when the session finishes. The "Current session" line still shows mid-run. Supersedes the idle-lock with full hiding per user request.
+
+Validation: svelte-check 0 errors/warnings; Playwright 16/16 including the replacement visibility test (observed failing before the fix).
+
+
+## October 5, 2026 - Last session card under Next session
+
+- The timer page sidebar now shows a "Last session" card directly under the next-session block. It summarizes the most recent session record (task title, phase, active time, outcome) and shows "No sessions yet." when no records exist. Reuses the existing next-card style with no new CSS.
+
+Validation: svelte-check 0 errors/warnings; Playwright 17/17 including the new last-session test (observed failing before the fix).
+
+
+
+## October 5, 2026 - Reports table refreshes when sessions land mid-view
+
+- Root cause: the report query only re-ran on page visits, preset clicks, or Apply dates. When a session completed while Reports was already open (auto-start chain or finishing from the compact window), the snapshot callback and session-completed handler reloaded only the Today totals, leaving the table, totals, and day chart stale. Added a refreshReportIfVisible helper (reports page visible, previously loaded, valid date range) called from both triggers; invalid mid-edit ranges skip silently instead of erroring.
+
+Validation: svelte-check 0 errors/warnings; Playwright 18/18 including the new mid-view refresh test (observed failing with a frozen 3-row table before the fix).
+
+
+
+## October 5, 2026 - Report table reordered with newest-first rows
+
+- Report table columns are now Start time, Session, Task, Active time, Outcome (the Started header was renamed to Start time). Rows render from a derived newest-first sort on started_unix_ms, so the display is descending even if rows arrive unordered; the backend ORDER BY started_unix_ms DESC remains as the first guarantee.
+
+Validation: svelte-check 0 errors/warnings; Playwright 19/19 including the new column-order/sort test (observed failing on the old header order before the fix).
+
+
+
+## October 5, 2026 - Reports default to Today with active presets; Settings can reset reports
+
+- Reports now open on Today. A Today preset joins Last 7 days / Last 30 days; the preset matching the selected range is highlighted via aria-pressed (same pressed styling as the mode switch, both themes), and custom ranges highlight nothing. The highlight derives from the selected dates, so manual edits and day rollover stay truthful.
+- Settings has a new Session data card with a confirmed Reset reports action. The backend reset_reports command clears the sessions table and the worker record cache, bumps the revision, publishes a fresh snapshot to all windows, and the UI reloads Today totals (Reports reloads on next visit).
+- Also fixed the Playwright spec file, which had accumulated thousands of blank lines from a CRLF double-translation bug in prior append scripts; it is back to 366 clean lines. The new reset test needed the dialog-first click pattern because window.confirm blocks the click promise.
+
+Validation: focus-core 22/22 (new store + service reset tests), desktop lib 5/5, Vitest 6/6, svelte-check 0/0, Playwright 20/20 (rewritten preset test, new reset test), rustfmt and clippy -D warnings clean. Docs (README, backlog, plan, ui-design-spec) updated; spec table-column list corrected to start time, session, task, active time, outcome.
+

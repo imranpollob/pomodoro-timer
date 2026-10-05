@@ -18,6 +18,26 @@ npm run tauri -- dev
 
 `npm run dev` alone opens the frontend with a desktop-connection message; production code never substitutes a browser timer for the Rust authority.
 
+### Seed demo data for UI review
+
+To inspect Tasks, rolling 7-day/30-day and custom Reports, and settings, run the seeder while the app is closed. It adds four demo tasks and two months of focus, short/long break, stopwatch, completed, skipped, and interrupted sessions to the selected beta profile. Existing tasks, sessions, settings, and checkpoints are kept. Stable IDs make repeated runs safe and avoid duplicate demo records. On Windows, macOS, and Linux the default is the Tauri beta app-data directory; `POMODORO_BETA_DATA_DIR` or `--profile PATH` selects another profile. Restart the app after seeding so tasks and reports reload.
+
+Windows PowerShell, from `desktop/`:
+
+```powershell
+python scripts/seed_demo_profile.py
+npm run tauri -- dev
+```
+
+macOS/Linux, from `desktop/`:
+
+```sh
+python3 scripts/seed_demo_profile.py
+npm run tauri -- dev
+```
+
+Pass `--profile PATH` to seed a different beta profile. Close the app before seeding to avoid competing writers.
+
 ### Windows first-time setup
 
 Node/npm alone are insufficient to launch the native application. If Tauri reports `cargo metadata ... program not found`, Rust/Cargo is missing or the terminal has not picked up its installation. Install the C++ workload from an **administrator PowerShell**, and Rust from your normal user PowerShell:
@@ -42,15 +62,19 @@ Use your checkout's path if different. Install [WebView2 Runtime](https://develo
 ## Current prototype
 
 - Pomodoro, short/long breaks, stopwatch, precise pause/resume and explicit finish confirmation.
-- Main window and **200 × 44** compact countdown with one action button. Click/double-click time, use an assistive-technology invoke, or press Enter there to reopen main; right-click/Shift+F10 opens the native menu. Space starts/pauses/resumes. Main remains reachable if the desktop has no tray.
+- Main window and **200 × 44** compact countdown with one action button. Click/double-click time, use an assistive-technology invoke, or press Enter there to reopen main; right-click/Shift+F10 opens the native menu. Escape or **Close compact timer** hides only the strip; it does not quit the app or reopen main. Space starts/pauses/resumes. Main remains reachable if the desktop has no tray.
+- Settings save automatically shortly after each edit; invalid timer values are skipped. Closing the main window hides it to the system tray by default while the timer keeps running; left-click the tray icon or choose Open Pomodoro to restore it, and Exit to quit. The close behavior can be changed in Settings.
 - One serialized Rust service processes UI/tray commands. Window subscriptions accept monotonically increasing revisions. No frontend timer decrements session duration.
 - SQLite transactions save completed/interrupted/skipped sessions and paused checkpoints together. Checkpoints occur on transitions and every 15 seconds while running. Restart restores paused and excludes time while the process was absent. A crash can lose active time since the last checkpoint.
-- Failed saves freeze active time, block replacement sessions, and expose retry. Preferences apply to future sessions. Sessions view shows the latest 20 records, not lifetime or daily totals.
-- Native audio works independently of webview visibility, with volume/mute, cancellable preview and output-device errors. Completion notifications and editable global timer/open-window shortcuts are opt-in. Shortcut conflicts preserve previous settings.
-- Windows suspend/lock broadcasts pause active work using the notification's timestamp; wake/unlock requires explicit resume. The listener bounds its checkpoint wait to one second. Failed/slow writes retain the existing retry/recovery boundaries. Native macOS/Linux suspend adapters and Wayland portal shortcuts remain pending.
-- SQLite stores desktop preferences, compact pinning, and debounced main/compact placement. Placement is clamped to connected monitor work areas on Windows. Compact text supports 100/125/150/200% and grows automatically; manual edge resizing is disabled. The compact strip has no native shadow to preserve its height on Windows.
+- Failed saves freeze active time, block replacement sessions, and expose retry. Preferences apply to future sessions. The Tasks view supports add/edit/complete/remove; a task can be selected for the next session and its title is saved with the session. Removing a task preserves its title in existing session history.
+- The timer page shows a local-calendar-day total split between Pomodoro and stopwatch time and session counts. Reports is the only session-history page and includes all saved records in the selected range.
+- Reports open on Today and provide Last 7 days / Last 30 days presets (the preset matching the selected range is highlighted) and custom local-date ranges, aggregate and per-day focus summaries, and session rows with task titles and outcomes. CSV export and per-row Details actions are removed. A confirmed Reset reports action in Settings deletes every recorded session. An opt-in setting auto-starts the next focus/break only after natural timer completion; manual finish, skip, and stopwatch remain manual.
+- Appearance settings are a light/dark theme and compact-mode background opacity. All four pages use shared typography and concise content titles. Promotional headers and sidebar slogans are removed; Compact mode opens from the timer page.
+- Native audio works independently of webview visibility, with volume control and output-device errors. Completion notifications are on by default.
+- Windows suspend/lock broadcasts pause active work using the notification's timestamp; wake/unlock requires explicit resume. The listener bounds its checkpoint wait to one second. Failed/slow writes retain the existing retry/recovery boundaries. Native macOS/Linux suspend adapters remain pending.
+- SQLite stores desktop preferences, compact pinning, and debounced main/compact placement. Placement is clamped to connected monitor work areas on Windows. The compact strip keeps a fixed text size and grows automatically for long stopwatch hours; manual edge resizing is disabled. The compact strip has no native shadow to preserve its height on Windows.
 
-Set `POMODORO_BETA_DATA_DIR` **before launching** to use an isolated beta profile. The default is Tauri's app-data directory for the beta identifier; its location appears under Settings → Desktop checks. `prototype.sqlite3` and its WAL/SHM sidecars belong to this profile. Back up the whole profile with the app closed. Schema 2 upgrades schema 1 transactionally while retaining sessions/checkpoints. The schema remains a prototype with no stable migration promise yet.
+Set `POMODORO_BETA_DATA_DIR` **before launching** to use an isolated beta profile. The default is Tauri's app-data directory for the beta identifier. `prototype.sqlite3` and its WAL/SHM sidecars belong to this profile. Back up the whole profile with the app closed. Schema 3 upgrades earlier beta schemas transactionally and retains existing sessions/checkpoints. The schema remains a prototype with no stable migration promise yet. Legacy Python data and old JSONBin data are outside the MVP; neither is imported or modified.
 
 ## Verify and build
 
@@ -91,17 +115,17 @@ $installer = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Objec
 ./scripts/windows_install_smoke.ps1 -Installer $installer.FullName -Python $testPython
 ```
 
-Use a separate Python environment for the UI test dependencies. The harness drives a normal binary through Windows UI Automation, with temporary data and no embedded driver. It checks real background shortcuts using its own foreground test window, compact size, accessible reopen, single-instance behavior, checkpointing and restart recovery. An unlocked desktop session is required.
+Use a separate Python environment for the UI test dependencies. The harness drives a normal binary through Windows UI Automation, with temporary data and no embedded driver. It checks compact size, accessible reopen, settings save, single-instance behavior, checkpointing and restart recovery. An unlocked desktop session is required.
 
 The installer probe refuses to replace an existing beta installation, verifies its install directory inside the workspace, and removes only that test installation. Silent uninstall retains application data. These are unsigned beta packages; signing, updater and stable-release acceptance remain separate work.
 
-Optional `POMODORO_TEST_AUDIO=1` and `POMODORO_TEST_NOTIFICATION=1` enable output-device and notification request checks. API success does not confirm hearing or receipt. Use Settings → Desktop checks for manual confirmation; desktop permission APIs do not establish Windows Focus Assist or notification-center delivery.
+Sound and notification delivery require manual confirmation on the installed app; API success does not confirm hearing or receipt, and desktop permission APIs do not establish Windows Focus Assist or notification-center delivery.
 
 ## Architecture and next gates
 
 `crates/focus-core` owns the clock-injected domain, service and SQLite access, without Tauri dependencies. `src-tauri` supplies windows, events, tray, notifications and process lifecycle. `src` contains presentation and typed IPC consumers.
 
-Use the [native platform checklist](../docs/implementation/platform-validation.md). Windows development launch is user-confirmed, and installed-build automation is available. Physical suspend/resume, Narrator, monitor removal and manual audio/notification delivery remain Windows acceptance checks. The user will perform macOS/Linux-specific work when on those machines. Three-platform support remains mandatory. Tasks/projects, legacy migration, full reporting, safe sync and the remaining planned windows follow their backlog batches.
+Use the [native platform checklist](../docs/implementation/platform-validation.md). Windows development launch is user-confirmed, and installed-build automation is available. Physical suspend/resume, Narrator, monitor removal, opacity and theme appearance, and manual audio/notification delivery remain Windows acceptance checks. The user will perform macOS/Linux-specific work when on those machines. Three-platform support remains mandatory. Projects, legacy migration, cloud sync, data import/export, session-detail views, reset-today, custom theme creation, goals/reminders, and in-app updates are deferred beyond MVP.
 
 ## Implemented views
 
@@ -111,4 +135,8 @@ These screenshots show the implemented Svelte UI rendered by Playwright with fix
 
 ![Compact timer at 200 by 44](../docs/implementation/prototype-screenshots/compact-timer.png)
 
-![Timer preferences](../docs/implementation/prototype-screenshots/settings.png)
+![Settings](../docs/implementation/prototype-screenshots/settings.png)
+
+![Tasks](../docs/implementation/prototype-screenshots/tasks.png)
+
+![Reports](../docs/implementation/prototype-screenshots/reports.png)

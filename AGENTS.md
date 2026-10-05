@@ -2,11 +2,11 @@
 
 ## Rebuild Direction & Product Requirements
 
-Follow the plan, backlog, and UI specification in `docs/implementation/`; record evidence in `implementation-log.md`. M0 is closed; M1 uses **Tauri 2, Rust, Svelte/TypeScript, SQLite**, provisionally. Windows, macOS, and Linux are mandatory. Resolve capability gaps with adapters or evaluate Qt.
+Follow the MVP scope in `docs/implementation/backlog.md` and UI specification; record evidence in `implementation-log.md`. M0 is closed; M1 uses **Tauri 2, Rust, Svelte/TypeScript, SQLite**, provisionally. Windows, macOS, and Linux are mandatory. Resolve capability gaps with adapters or evaluate Qt.
 
-Keep the Python app usable until migration, feature parity, and platform acceptance pass. Preserve legacy data with backed-up, validated, idempotent migration. Pin toolchains and commit dependency lockfiles.
+Keep the Python app available while the beta is developed. Legacy data migration and old JSONBin data are outside MVP scope; protect data created by the beta. Pin toolchains and lock dependencies; the user owns commits and pushes.
 
-Keep one backend timer authority with injected clocks, session snapshots, sleep/wake handling, and transactional persistence. UI/tray/shortcuts share commands/state. Compact countdown targets **200 × 44 logical pixels**: time, phase indicator, one play/pause button. Other actions belong in the accessible context menu. Follow the window/state inventory.
+Keep one backend timer authority with injected clocks, session snapshots, sleep/wake handling, and transactional persistence. Tasks are assigned before a session starts and saved with its title. UI/tray/shortcuts share commands/state. Compact countdown targets **200 × 44 logical pixels**: time, phase indicator, one play/pause button. Close, pin, finish, and exit actions belong in the accessible context menu; closing compact must not quit the app or reopen main.
 
 ## Project Structure
 

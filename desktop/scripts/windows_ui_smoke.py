@@ -15,7 +15,6 @@ import tempfile
 import time
 
 from pywinauto import Desktop
-from pywinauto.keyboard import send_keys
 
 
 def wait_for(predicate, description, timeout=25):
@@ -50,10 +49,9 @@ def probe(executable, folder):
     process = subprocess.Popen([str(executable)], env=environment)
     checks = []
     main = None
-    helper = None
     try:
         ui = Desktop(backend="uia")
-        main = ui.window(process=process.pid, title="Pomodoro Beta")
+        main = ui.window(process=process.pid, title="Pomodoro")
         main.wait("visible", timeout=30)
         button(main, "Start focus").invoke()
         button(main, "Pause").invoke()
@@ -90,56 +88,13 @@ def probe(executable, folder):
         checks.append("compact controls and accessible reopen of minimized main")
 
         button(main, "Settings").invoke()
-        checkbox = main.child_window(title="Enable global shortcuts", control_type="CheckBox")
-        checkbox.wait("exists", timeout=20)
-        checkbox.toggle()
-        # pywinauto's `title` for Edit uses its VALUE, not its UIA accessible name.
-        edits = main.descendants(control_type="Edit")
-        timer_edit = next(edit for edit in edits if edit.element_info.name == "Global timer shortcut")
-        open_edit = next(edit for edit in edits if edit.element_info.name == "Open main shortcut")
-        timer_edit.set_edit_text("Control+Alt+Shift+F24")
-        open_edit.set_edit_text("Control+Alt+Shift+F23")
-        button(main, "Save desktop preferences").invoke()
-        wait_for(lambda: main.child_window(title="Registered", control_type="Text", visible_only=False).exists(), "shortcut registration")
-
-        # Own a harmless second window to prove the app does not need focus.
-        import tkinter as tk
-        helper = tk.Tk()
-        helper.title("Pomodoro shortcut smoke")
-        helper.geometry("260x70+50+50")
-        tk.Label(helper, text="Testing background timer shortcuts").pack(pady=15)
-        main.minimize()
-        helper.update()
-        helper.lift()
-        helper.focus_force()
-        helper.update()
-        user32.GetForegroundWindow.restype = wintypes.HWND
-        user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
-        def helper_has_focus():
-            owner = wintypes.DWORD()
-            user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), ctypes.byref(owner))
-            return owner.value == os.getpid()
-        wait_for(helper_has_focus, "test helper has foreground focus", timeout=5)
-        send_keys("^%+{F24}")
-        button(compact, "Pause")
-        send_keys("^%+{F24}")
-        button(compact, "Resume")
-        send_keys("^%+{F23}")
-        wait_for(lambda: not user32.IsIconic(main.wrapper_object().handle), "global main-window reopen")
-        checks.append("real global shortcut keys while another window has focus")
-        helper.destroy()
-        helper = None
-
-        if os.environ.get("POMODORO_TEST_AUDIO") == "1":
-            button(main, "Test sound").invoke()
-            wait_for(lambda: main.child_window(title="Playback accepted by the output device.", control_type="Text", visible_only=False).exists(), "native audio device")
-            checks.append("native audio output device accepted playback; hearing requires manual confirmation")
-            button(main, "Stop preview").invoke()
-        if os.environ.get("POMODORO_TEST_NOTIFICATION") == "1":
-            button(main, "Test notification").invoke()
-            time.sleep(0.5)
-            assert not main.child_window(title="Needs attention", control_type="Text", visible_only=False).exists(), "Notification API reported an error"
-            checks.append("notification test requested; delivery requires manual confirmation")
+        tray_checkbox = main.child_window(title="Close to system tray instead of exiting", control_type="CheckBox")
+        tray_checkbox.wait("exists", timeout=20)
+        if tray_checkbox.get_toggle_state():
+            tray_checkbox.toggle()
+        time.sleep(2)
+        assert not main.child_window(title="Needs attention", control_type="Text", visible_only=False).exists(), "Saving desktop preferences reported an error"
+        checks.append("settings navigation and desktop preference autosave without errors")
 
         # A second normal process must activate the first rather than write another profile.
         second = subprocess.Popen([str(executable)], env=environment)
@@ -157,10 +112,10 @@ def probe(executable, folder):
         checks.append("normal close checkpoints unfinished work; driver absent")
         saved_time = checkpoint["active"]["elapsed_ms"]
         process = subprocess.Popen([str(executable)], env=environment)
-        main = ui.window(process=process.pid, title="Pomodoro Beta")
+        main = ui.window(process=process.pid, title="Pomodoro")
         main.wait("visible", timeout=30)
         button(main, "Resume")
-        main.child_window(title_re="Your previous session was restored paused.*", control_type="Text").wait("exists", timeout=20)
+        main.child_window(title_re="Your previous session was restored.*", control_type="Text").wait("exists", timeout=20)
         main.close()
         process.wait(timeout=20)
         with closing(sqlite3.connect(profile / "prototype.sqlite3")) as database:
@@ -169,8 +124,6 @@ def probe(executable, folder):
         checks.append("normal restart restores paused without process-down duration")
         return {"passed": True, "checks": checks, "dpi": dpi}
     finally:
-        if helper is not None:
-            helper.destroy()
         if process.poll() is None:
             if main is not None:
                 try:

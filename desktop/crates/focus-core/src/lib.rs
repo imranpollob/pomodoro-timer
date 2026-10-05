@@ -21,6 +21,23 @@ pub struct Settings {
     pub long_break_minutes: u32,
     pub long_break_interval: u32,
     pub sound_enabled: bool,
+    #[serde(default)]
+    pub auto_start_next: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskReference {
+    pub id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Task {
+    pub id: String,
+    pub title: String,
+    pub completed: bool,
+    pub created_unix_ms: u64,
+    pub updated_unix_ms: u64,
 }
 
 impl Default for Settings {
@@ -31,6 +48,7 @@ impl Default for Settings {
             long_break_minutes: 15,
             long_break_interval: 4,
             sound_enabled: true,
+            auto_start_next: false,
         }
     }
 }
@@ -65,6 +83,8 @@ struct ActiveSession {
     duration_ms: Option<u64>,
     interval: u32,
     elapsed_ms: u64,
+    #[serde(default)]
+    task: Option<TaskReference>,
     #[serde(skip)]
     started_tick: Option<u64>,
 }
@@ -86,6 +106,8 @@ pub struct Engine {
     phase: Phase,
     completed_focus: u32,
     active: Option<ActiveSession>,
+    #[serde(default)]
+    selected_task: Option<TaskReference>,
 }
 
 impl Default for Engine {
@@ -95,6 +117,7 @@ impl Default for Engine {
             phase: Phase::Focus,
             completed_focus: 0,
             active: None,
+            selected_task: None,
         }
     }
 }
@@ -105,8 +128,10 @@ pub enum Command {
     Toggle,
     Pause,
     Finish,
+    AutoFinish,
     SetMode { mode: Phase },
     Configure { settings: Settings },
+    SelectTask { task: Option<TaskReference> },
     RetrySave,
 }
 
@@ -117,6 +142,8 @@ pub struct Record {
     pub started_unix_ms: u64,
     pub active_ms: u64,
     pub outcome: String,
+    #[serde(default)]
+    pub task: Option<TaskReference>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,9 +156,21 @@ pub struct TimerView {
     pub cycle: u32,
     pub cycle_interval: u32,
     pub settings: Settings,
+    pub selected_task: Option<TaskReference>,
+    pub active_task: Option<TaskReference>,
 }
 
 impl Engine {
+    pub fn clear_selected_task_if(&mut self, id: &str) {
+        if self
+            .selected_task
+            .as_ref()
+            .is_some_and(|task| task.id == id)
+        {
+            self.selected_task = None;
+        }
+    }
+
     pub fn apply(
         &mut self,
         command: Command,
@@ -148,6 +187,7 @@ impl Engine {
                         duration_ms: self.settings.duration_ms(self.phase),
                         interval: self.settings.long_break_interval,
                         elapsed_ms: 0,
+                        task: self.selected_task.clone(),
                         started_tick: Some(now),
                     });
                 } else if self.running() {
@@ -157,7 +197,8 @@ impl Engine {
                 }
             }
             Command::Pause => self.pause(now),
-            Command::Finish => {
+            finish @ (Command::Finish | Command::AutoFinish) => {
+                let auto_start = finish == Command::AutoFinish;
                 let Some(active) = self.active.take() else {
                     return Ok(None);
                 };
@@ -190,13 +231,31 @@ impl Engine {
                     }
                     _ => Phase::Focus,
                 };
-                return Ok(Some(Record {
+                let record = Record {
                     id: active.id,
                     phase: active.phase,
                     started_unix_ms: active.started_unix_ms,
                     active_ms: elapsed,
                     outcome: outcome.into(),
-                }));
+                    task: active.task,
+                };
+                if auto_start
+                    && completed
+                    && self.settings.auto_start_next
+                    && self.phase != Phase::Stopwatch
+                {
+                    self.active = Some(ActiveSession {
+                        id: Uuid::new_v4().to_string(),
+                        phase: self.phase,
+                        started_unix_ms: wall,
+                        duration_ms: self.settings.duration_ms(self.phase),
+                        interval: self.settings.long_break_interval,
+                        elapsed_ms: 0,
+                        task: self.selected_task.clone(),
+                        started_tick: Some(now),
+                    });
+                }
+                return Ok(Some(record));
             }
             Command::SetMode { mode } => {
                 if self.active.is_some() {
@@ -210,6 +269,9 @@ impl Engine {
             Command::Configure { settings } => {
                 settings.validate()?;
                 self.settings = settings;
+            }
+            Command::SelectTask { task } => {
+                self.selected_task = task;
             }
             Command::RetrySave => return Err("Retry is handled by the persistence service.".into()),
         }
@@ -241,6 +303,13 @@ impl Engine {
     }
     pub fn validate(&self) -> Result<(), String> {
         self.settings.validate()?;
+        if self.selected_task.as_ref().is_some_and(|task| {
+            task.id.trim().is_empty()
+                || task.title.trim().is_empty()
+                || task.title.chars().count() > 120
+        }) {
+            return Err("Invalid selected task in timer checkpoint.".into());
+        }
         if let Some(a) = &self.active
             && (Uuid::parse_str(&a.id).is_err()
                 || a.phase != self.phase
@@ -280,6 +349,8 @@ impl Engine {
             cycle: self.completed_focus % interval + 1,
             cycle_interval: interval,
             settings: self.settings.clone(),
+            selected_task: self.selected_task.clone(),
+            active_task: self.active.as_ref().and_then(|active| active.task.clone()),
         }
     }
 }
@@ -287,6 +358,18 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn old_settings_deserialize_with_auto_start_disabled() {
+        let old = serde_json::json!({
+            "focus_minutes": 25,
+            "short_break_minutes": 5,
+            "long_break_minutes": 15,
+            "long_break_interval": 4,
+            "sound_enabled": true
+        });
+        let settings: Settings = serde_json::from_value(old).unwrap();
+        assert!(!settings.auto_start_next);
+    }
     #[test]
     fn pauses_and_fractional_segments_share_one_clock() {
         let mut e = Engine::default();
@@ -383,6 +466,55 @@ mod tests {
             e.apply(Command::Finish, duration, 0).unwrap();
         }
         assert_eq!(e.view(0).cycle, 1);
+    }
+    #[test]
+    fn auto_finish_starts_the_next_phase_only_when_preference_is_enabled() {
+        let mut engine = Engine::default();
+        engine
+            .apply(
+                Command::Configure {
+                    settings: Settings {
+                        auto_start_next: true,
+                        ..Settings::default()
+                    },
+                },
+                0,
+                0,
+            )
+            .unwrap();
+        engine.apply(Command::Toggle, 0, 10_000).unwrap();
+        let record = engine
+            .apply(Command::AutoFinish, 25 * 60_000, 25 * 60_000 + 10_000)
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.outcome, "completed");
+        let next = engine.view(25 * 60_000);
+        assert_eq!(next.phase, Phase::ShortBreak);
+        assert_eq!(next.status, "running");
+        assert_eq!(next.active_ms, 0);
+        assert_eq!(next.duration_ms, Some(5 * 60_000));
+    }
+    #[test]
+    fn manual_finish_never_auto_starts_the_following_phase() {
+        let mut engine = Engine::default();
+        engine
+            .apply(
+                Command::Configure {
+                    settings: Settings {
+                        auto_start_next: true,
+                        ..Settings::default()
+                    },
+                },
+                0,
+                0,
+            )
+            .unwrap();
+        engine.apply(Command::Toggle, 0, 0).unwrap();
+        engine
+            .apply(Command::Finish, 25 * 60_000, 25 * 60_000)
+            .unwrap();
+        assert_eq!(engine.view(25 * 60_000).phase, Phase::ShortBreak);
+        assert_eq!(engine.view(25 * 60_000).status, "idle");
     }
     #[test]
     fn invalid_settings_cannot_mutate_session() {
