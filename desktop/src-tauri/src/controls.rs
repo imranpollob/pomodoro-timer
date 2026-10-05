@@ -8,6 +8,10 @@ fn default_close_to_tray() -> bool {
     true
 }
 
+fn default_menu_bar_visible() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Preferences {
@@ -18,6 +22,9 @@ pub struct Preferences {
     pub notifications: bool,
     #[serde(default = "default_close_to_tray")]
     pub close_to_tray: bool,
+    #[serde(default = "default_menu_bar_visible")]
+    pub menu_bar_visible: bool,
+    pub dock_hidden: bool,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -28,10 +35,20 @@ impl Default for Preferences {
             pinned: true,
             notifications: true,
             close_to_tray: true,
+            menu_bar_visible: true,
+            dock_hidden: false,
         }
     }
 }
 impl Preferences {
+    /// macOS keeps the app reachable: a hidden Dock icon requires the menu bar icon.
+    /// Dropping the menu bar icon restores the Dock icon instead of stranding the app.
+    fn normalized(mut self) -> Self {
+        if !self.menu_bar_visible {
+            self.dock_hidden = false;
+        }
+        self
+    }
     pub fn validate(&self) -> Result<(), String> {
         if self.volume > 100
             || !(60..=100).contains(&self.opacity_percent)
@@ -49,9 +66,24 @@ impl Preferences {
 pub struct DesktopState {
     pub revision: u64,
     pub preferences: Preferences,
+    pub platform: &'static str,
     pub notification_status: String,
     pub audio_status: String,
     pub power_status: String,
+}
+
+/// Applies Dock and menu-bar presence on macOS. Other platforms ignore these preferences.
+/// Presence is cosmetic: a failed application never fails the saved preferences.
+#[cfg(target_os = "macos")]
+pub fn apply_macos_presence(app: &tauri::AppHandle, preferences: &Preferences) {
+    if let Some(tray) = app.tray_by_id("focus-tray") {
+        let _ = tray.set_visible(preferences.menu_bar_visible);
+    }
+    let _ = app.set_activation_policy(if preferences.dock_hidden {
+        tauri::ActivationPolicy::Accessory
+    } else {
+        tauri::ActivationPolicy::Regular
+    });
 }
 pub struct Controls {
     state: Mutex<DesktopState>,
@@ -65,11 +97,13 @@ impl Controls {
             .transpose()
             .map_err(|e| format!("Invalid desktop preferences: {e}"))?
             .unwrap_or_default();
+        let preferences = preferences.normalized();
         preferences.validate()?;
         Ok(Self {
             state: Mutex::new(DesktopState {
                 revision: 0,
                 preferences,
+                platform: std::env::consts::OS,
                 notification_status:
                     "Delivery is controlled by OS notification settings; test the installed app."
                         .into(),
@@ -83,6 +117,8 @@ impl Controls {
     pub fn snapshot(&self) -> DesktopState {
         self.state.lock().unwrap().clone()
     }
+    // Only the Windows power listener reports status today; macOS/Linux adapters will call this.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     pub fn power_status(&self, value: String) {
         let mut state = self.state.lock().unwrap();
         state.power_status = value;
@@ -116,6 +152,7 @@ impl Controls {
         preferences: Preferences,
     ) -> Result<DesktopState, String> {
         let _save = self.save_lock.lock().unwrap();
+        let preferences = preferences.normalized();
         preferences.validate()?;
         let previous = self.snapshot().preferences;
         let compact = app
@@ -136,6 +173,8 @@ impl Controls {
             state.preferences = preferences;
             state.revision += 1;
         }
+        #[cfg(target_os = "macos")]
+        apply_macos_presence(app, &self.state.lock().unwrap().preferences);
         self.publish(app);
         Ok(self.snapshot())
     }
@@ -158,6 +197,31 @@ mod tests {
         assert!(p.validate().is_err());
         p.opacity_percent = 100;
         assert!(p.validate().is_ok());
+    }
+    #[test]
+    fn macos_presence_defaults_keep_old_profiles_reachable() {
+        let stored: Preferences =
+            serde_json::from_str(r#"{"volume":60,"theme":"dark","opacity_percent":100,"pinned":true,"notifications":false,"close_to_tray":true}"#)
+                .unwrap();
+        assert!(stored.menu_bar_visible);
+        assert!(!stored.dock_hidden);
+        assert!(Preferences::default().menu_bar_visible);
+        assert!(!Preferences::default().dock_hidden);
+    }
+    #[test]
+    fn dropping_menu_bar_restores_dock() {
+        let hidden = Preferences {
+            menu_bar_visible: false,
+            dock_hidden: true,
+            ..Preferences::default()
+        };
+        assert!(!hidden.normalized().dock_hidden);
+        let visible = Preferences {
+            menu_bar_visible: true,
+            dock_hidden: true,
+            ..Preferences::default()
+        };
+        assert!(visible.normalized().dock_hidden);
     }
     #[test]
     fn close_to_tray_defaults_on_for_old_profiles() {

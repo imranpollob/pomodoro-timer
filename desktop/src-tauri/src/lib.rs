@@ -429,7 +429,12 @@ pub fn run() {
             let compact = MenuItem::with_id(app, "compact", "Compact timer", true, None::<&str>)?;
             let toggle =
                 MenuItem::with_id(app, "toggle", "Start / Pause / Resume", true, None::<&str>)?;
-            let exit = MenuItem::with_id(app, "exit", "Exit", true, None::<&str>)?;
+            let quit_label = if cfg!(target_os = "macos") {
+                "Quit"
+            } else {
+                "Exit"
+            };
+            let exit = MenuItem::with_id(app, "exit", quit_label, true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &compact, &toggle, &exit])?;
             // Tray visibility varies by desktop; the main window stays available when it is missing.
             let _ = TrayIconBuilder::with_id("focus-tray")
@@ -437,6 +442,11 @@ pub fn run() {
                 .tooltip("Pomodoro")
                 .icon(app.default_window_icon().ok_or("Missing app icon")?.clone())
                 .build(app);
+            #[cfg(target_os = "macos")]
+            controls::apply_macos_presence(
+                app.handle(),
+                &app.state::<Controls>().snapshot().preferences,
+            );
             #[cfg(feature = "smoke-test")]
             smoke::start(app.handle().clone());
             Ok(())
@@ -464,12 +474,16 @@ pub fn run() {
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                if window.label() == "compact"
+                // macOS closes windows without quitting; quitting stays on Cmd+Q and Quit.
+                #[cfg(target_os = "macos")]
+                let hide = true;
+                #[cfg(not(target_os = "macos"))]
+                let hide = window.label() == "compact"
                     || window
                         .app_handle()
                         .try_state::<Controls>()
-                        .is_some_and(|controls| controls.snapshot().preferences.close_to_tray)
-                {
+                        .is_some_and(|controls| controls.snapshot().preferences.close_to_tray);
+                if hide {
                     let _ = window.hide();
                 } else {
                     request_exit(window.app_handle());
@@ -479,6 +493,11 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("Unable to start Pomodoro; existing data was left intact");
     app.run(|app, event| {
+        // Dock-icon clicks reopen the main window when it is hidden.
+        #[cfg(target_os = "macos")]
+        if matches!(&event, tauri::RunEvent::Reopen { .. }) {
+            let _ = show_main(app);
+        }
         if let tauri::RunEvent::ExitRequested {
             code: None, api, ..
         } = event

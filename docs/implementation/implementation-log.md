@@ -283,3 +283,26 @@ Validation: svelte-check 0 errors/warnings; Playwright 19/19 including the new c
 
 Validation: focus-core 22/22 (new store + service reset tests), desktop lib 5/5, Vitest 6/6, svelte-check 0/0, Playwright 20/20 (rewritten preset test, new reset test), rustfmt and clippy -D warnings clean. Docs (README, backlog, plan, ui-design-spec) updated; spec table-column list corrected to start time, session, task, active time, outcome.
 
+## October 5, 2026 - macOS Dock and menu-bar presence
+
+- Replaced the macOS close-to-tray concept with standard Mac behavior: closing the main window always hides it and keeps the app running; Dock-icon clicks reopen it via the Reopen event; Cmd+Q and Quit (the tray menu says Quit on macOS, Exit elsewhere) checkpoint and exit through the existing path. The close-to-tray setting remains on Windows/Linux only.
+- Added persisted macOS presence preferences: Show in menu bar (default on, applied live via tray visibility) and Hide Dock icon (default off, applied live via Regular/Accessory activation policy, no restart). Old profiles without the new keys keep a visible menu bar and Dock icon.
+- Reachability guard: hiding the Dock icon requires the menu bar icon. The UI disables Hide Dock icon while the menu bar is off, and the backend normalizes stored/draft combos (dropping the menu bar restores the Dock) on load and save, so no reachable state can strand the app.
+- Settings renders the macOS section (plus macOS notification copy) from a new backend-reported platform field; the Windows notification copy and tray-close row stay for other platforms.
+
+Validation: svelte-check 0/0, Vitest 6/6, and production build pass on the pinned Node v24.19.0; Playwright 21/21 including the new macOS settings gating test (run under Node v23.3.0 with a disposable npm cache and temp browser path, since the shared caches have root-owned files and the sandbox blocks the dev-server port). Rust on 1.99.0: desktop lib 7/7 (2 new), focus-core 22/22, rustfmt clean, workspace Clippy with -D warnings clean, smoke-feature check clean. Clippy initially failed on a pre-existing macOS-only dead_code warning for power_status (verified identical on the untouched tree); fixed with a zero-behavior cfg-gated allow noting the pending macOS/Linux adapters. Native macOS apply paths (tray visibility, activation policy, Reopen, Quit label) still need a dev-launch and installed-DMG check; a dedicated monochrome menu-bar template icon remains a follow-up.
+
+## October 5, 2026 - Reports chart icon
+
+- The Reports tab and Reports page header used the clock-style history glyph. Added a bar-chart glyph (axes plus three grounded bars) in the same 24 px stroke style and pointed both Reports surfaces at it. Today and Session data keep the history glyph.
+- Added a Playwright test pinning the chart path on the tab and page header; the Icon component silently falls back to the timer glyph for unknown names, so the pin guards against typos.
+
+Validation: svelte-check 0/0, production build clean, glyph visually confirmed via a rendered preview (grounded bars after a first floating draft). UI suite executed headless against the production build through route interception (see next entry): 22/22 including the new icon test. Docs screenshots still show the old glyph.
+
+## October 5, 2026 - In-app confirm dialog replaces dead window.confirm
+
+- Diagnosis: the user reported both Restore buttons doing nothing in Windows dev mode, with no dialog and no error — and Remove task / Reset reports confirms dead too. Those paths share only window.confirm, called outside try/catch, so a dead confirm layer fails silently everywhere. The Playwright mock uses real Chromium dialogs, which is why the suite stayed green while the WebView2 app was broken.
+- Replaced all four window.confirm calls (restore timer/desktop defaults, remove task, reset reports) with one shared in-app <dialog>: heading, message, Cancel/confirm buttons, Escape-to-cancel, double-open guard, and Space-key suppression while open. No window.confirm remains in src. The restore/reset Playwright tests now drive the in-app dialog, with added Cancel-path coverage proving Cancel changes nothing.
+
+Validation: svelte-check 0/0, Vitest 6/6, production build clean. Full UI suite executed headless against the production build through a /tmp route-interception harness (no dev server): 22/22, plus a throwaway probe proving the remove-task dialog shows the task title and Cancel keeps the row. The user just needs to reload dev (frontend-only change; no backend rebuild needed) and confirm the dialogs appear on Windows.
+

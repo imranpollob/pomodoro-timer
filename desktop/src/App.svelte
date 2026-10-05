@@ -14,6 +14,19 @@
   let page = $state('timer');
   let draft = $state<Settings | null>(null);
   let finishDialog = $state<HTMLDialogElement>(null!);
+  let confirmDialog = $state<HTMLDialogElement>(null!);
+  let pendingConfirm = $state<{ heading: string; message: string; confirmLabel: string; action: () => void } | null>(null);
+  function askConfirm(heading: string, message: string, confirmLabel: string, action: () => void) {
+    if (!confirmDialog || confirmDialog.open) return;
+    pendingConfirm = { heading, message, confirmLabel, action };
+    confirmDialog.showModal();
+  }
+  function resolveConfirm(confirmed: boolean) {
+    const pending = pendingConfirm;
+    pendingConfirm = null;
+    confirmDialog?.close();
+    if (confirmed) pending?.action();
+  }
   let desktop = $state<DesktopState | null>(null);
   let desktopDraft = $state<DesktopPreferences | null>(null);
   let desktopDirty = $state(false);
@@ -121,10 +134,11 @@
   }
   async function removeTask(id: string) {
     const task = tasks.find(item => item.id === id);
-    if (task && window.confirm(`Remove “${task.title}” from your task list? Saved sessions will keep its title.`)) {
+    if (!task) return;
+    askConfirm('Remove task?', `Remove “${task.title}” from your task list? Saved sessions will keep its title.`, 'Remove', async () => {
       if (snapshot?.selected_task?.id === id) await send({ type: 'select_task', task: null });
       await taskRequest('delete_task', { id });
-    }
+    });
   }
   async function setTask(taskId: string) {
     const task = tasks.find(item => item.id === taskId);
@@ -207,21 +221,23 @@
   }
   async function restoreTimerDefaults() {
     if (!snapshot || busy) return;
-    if (!window.confirm('Restore default timer settings? Your current durations and options will be replaced.')) return;
-    try {
-      const defaults = await invoke<Settings>('timer_defaults');
-      draft = { ...defaults }; timerDirty = true; timerSaveStatus = ''; error = '';
-      flushTimerSave();
-    } catch (e) { reportError(String(e)); }
+    askConfirm('Restore default timer settings?', 'Your current durations and options will be replaced.', 'Restore defaults', async () => {
+      try {
+        const defaults = await invoke<Settings>('timer_defaults');
+        draft = { ...defaults }; timerDirty = true; timerSaveStatus = ''; error = '';
+        flushTimerSave();
+      } catch (e) { reportError(String(e)); }
+    });
   }
   async function restoreDesktopDefaults() {
     if (!desktop || busy) return;
-    if (!window.confirm('Restore default desktop settings? Your current appearance and behavior options will be replaced.')) return;
-    try {
-      const defaults = await invoke<DesktopPreferences>('desktop_defaults');
-      desktopDraft = { ...defaults }; desktopDirty = true; desktopSaveStatus = ''; error = '';
-      flushDesktopSave();
-    } catch (e) { reportError(String(e)); }
+    askConfirm('Restore default desktop settings?', 'Your current appearance and behavior options will be replaced.', 'Restore desktop defaults', async () => {
+      try {
+        const defaults = await invoke<DesktopPreferences>('desktop_defaults');
+        desktopDraft = { ...defaults }; desktopDirty = true; desktopSaveStatus = ''; error = '';
+        flushDesktopSave();
+      } catch (e) { reportError(String(e)); }
+    });
   }
   function flushTimerSave() {
     if (timerSaveTimer !== null) { clearTimeout(timerSaveTimer); timerSaveTimer = null; }
@@ -241,13 +257,14 @@
     finally { busy = false; }
   }
   async function resetReports() {
-    if (!window.confirm('Delete every recorded session? Totals, reports, and the last-session summary will be cleared. This cannot be undone.')) return;
-    try {
-      snapshot = await invoke<Snapshot>('reset_reports');
-      lastRecordId = snapshot.records[0]?.id ?? null;
-      await loadToday();
-      error = '';
-    } catch (e) { reportError(String(e)); }
+    askConfirm('Reset reports?', 'Delete every recorded session? Totals, reports, and the last-session summary will be cleared. This cannot be undone.', 'Reset reports', async () => {
+      try {
+        snapshot = await invoke<Snapshot>('reset_reports');
+        lastRecordId = snapshot.records[0]?.id ?? null;
+        await loadToday();
+        error = '';
+      } catch (e) { reportError(String(e)); }
+    });
   }
   function navigate(destination: string) {
     page = destination;
@@ -263,7 +280,7 @@
     else void send({ type: 'toggle' });
   }
   function keyboard(event: KeyboardEvent) {
-    if (compact || !snapshot || event.target instanceof HTMLInputElement || finishDialog?.open) return;
+    if (compact || !snapshot || event.target instanceof HTMLInputElement || finishDialog?.open || confirmDialog?.open) return;
     if (event.code === 'Space' && (event.target === document.body || event.target instanceof HTMLElement && event.target.classList.contains('timer-face'))) {
       event.preventDefault(); primary();
     }
@@ -304,7 +321,7 @@
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark"><Icon name="timer" size={22} /></span><strong>Pomodoro</strong></div>
       <nav aria-label="Main navigation">
-        {#each [{ id: 'timer', label: 'Timer', icon: 'timer' }, { id: 'tasks', label: 'Tasks', icon: 'check' }, { id: 'reports', label: 'Reports', icon: 'history' }] as item}
+        {#each [{ id: 'timer', label: 'Timer', icon: 'timer' }, { id: 'tasks', label: 'Tasks', icon: 'check' }, { id: 'reports', label: 'Reports', icon: 'chart' }] as item}
           <button class:active={page === item.id} aria-current={page === item.id ? 'page' : undefined} disabled={!snapshot && item.id !== 'timer'} onclick={() => navigate(item.id)}><Icon name={item.icon} />{item.label}</button>
         {/each}
       </nav>
@@ -360,7 +377,7 @@
           </article>{/each}</div>{/if}
         </section>
       {:else if page === 'reports'}
-        <section class="content-card report-card"><div class="card-title"><Icon name="history" /><h2>Reports</h2></div>
+        <section class="content-card report-card"><div class="card-title"><Icon name="chart" /><h2>Reports</h2></div>
           <div class="report-toolbar"><div class="report-presets"><button class="secondary" aria-pressed={reportPreset === 'today'} onclick={() => setReportPreset(1)}>Today</button><button class="secondary" aria-pressed={reportPreset === 'week'} onclick={() => setReportPreset(7)}>Last 7 days</button><button class="secondary" aria-pressed={reportPreset === 'month'} onclick={() => setReportPreset(30)}>Last 30 days</button></div>
             <label>From<input aria-label="Report start date" type="date" bind:value={reportFrom} /></label><label>To<input aria-label="Report end date" type="date" bind:value={reportTo} /></label>
             <button class="primary" onclick={() => void loadReport()}>Apply dates</button>
@@ -393,8 +410,15 @@
               <label>Compact mode background opacity<span class="input-unit"><input aria-label="Compact mode background opacity" type="range" min="60" max="100" step="5" bind:value={desktopDraft.opacity_percent} />{desktopDraft.opacity_percent}%</span></label></div>
             <label class="checkbox-row"><input type="checkbox" bind:checked={desktopDraft.pinned} />Keep compact timer on top</label>
             <label class="checkbox-row"><input type="checkbox" bind:checked={desktopDraft.notifications} />Send completion notifications</label>
-            <p class="muted">Notification delivery also depends on Windows notification settings and Focus Assist. </p>
-            <label class="checkbox-row"><input type="checkbox" bind:checked={desktopDraft.close_to_tray} />Close to system tray instead of exiting</label>
+            {#if desktop.platform === 'macos'}
+              <p class="muted">Notification delivery also depends on macOS notification settings and Focus modes.</p>
+              <label class="checkbox-row"><input type="checkbox" bind:checked={desktopDraft.menu_bar_visible} />Show in menu bar</label>
+              <label class="checkbox-row"><input type="checkbox" bind:checked={desktopDraft.dock_hidden} disabled={!desktopDraft.menu_bar_visible} />Hide Dock icon</label>
+              <p class="muted">Hiding the Dock icon requires the menu bar icon so the app stays reachable. Closing the main window always keeps the app running.</p>
+            {:else}
+              <p class="muted">Notification delivery also depends on Windows notification settings and Focus Assist. </p>
+              <label class="checkbox-row"><input type="checkbox" bind:checked={desktopDraft.close_to_tray} />Close to system tray instead of exiting</label>
+            {/if}
             <div class="form-actions"><span class="save-status" role="status">{desktopSaveStatus}</span><button class="secondary" type="button" onclick={() => void restoreDesktopDefaults()}>Restore desktop defaults</button></div>
           </form>
         </section>
@@ -403,4 +427,5 @@
     </main>
   </div>
   <dialog bind:this={finishDialog}><div class="dialog-content"><h2>{snapshot?.phase.includes('break') ? 'Ready to focus again?' : 'Finish this session?'}</h2><p>Your active time will be saved on this device.</p><div class="form-actions"><button class="secondary" onclick={() => finishDialog.close()}>Keep {snapshot?.phase.includes('break') ? 'resting' : 'focusing'}</button><button class="primary" onclick={() => { finishDialog.close(); void send({ type: 'finish' }); }}>Finish and save</button></div></div></dialog>
+  <dialog bind:this={confirmDialog} oncancel={() => pendingConfirm = null}><div class="dialog-content"><h2>{pendingConfirm?.heading}</h2><p>{pendingConfirm?.message}</p><div class="form-actions"><button class="secondary" onclick={() => resolveConfirm(false)}>Cancel</button><button class="primary" onclick={() => resolveConfirm(true)}>{pendingConfirm?.confirmLabel ?? 'Confirm'}</button></div></div></dialog>
 {/if}

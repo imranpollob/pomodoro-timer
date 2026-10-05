@@ -23,9 +23,10 @@ export type Command = { type: 'toggle' | 'pause' | 'finish' | 'retry_save' }
 export interface DesktopPreferences {
   volume: number; theme: 'dark' | 'light';
   opacity_percent: number; pinned: boolean; notifications: boolean; close_to_tray: boolean;
+  menu_bar_visible: boolean; dock_hidden: boolean;
 }
 export interface DesktopState {
-  revision: number; preferences: DesktopPreferences;
+  revision: number; preferences: DesktopPreferences; platform: string;
   notification_status: string; audio_status: string; power_status: string;
 }
 export const phaseLabel: Record<Phase, string> = {

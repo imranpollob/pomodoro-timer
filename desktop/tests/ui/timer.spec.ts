@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-async function mockDesktop(page: Page, options: { seconds: number; emptyReports?: boolean; recovered?: boolean; interruption?: string | null; opacity?: number; lastRecord?: boolean } = { seconds: 1500 }) {
+async function mockDesktop(page: Page, options: { seconds: number; emptyReports?: boolean; recovered?: boolean; interruption?: string | null; opacity?: number; lastRecord?: boolean; platform?: string } = { seconds: 1500 }) {
   await page.addInitScript(options => {
     (window as unknown as { isTauri: boolean }).isTauri = true;
     const callbacks = new Map<number, (value: unknown) => void>();
@@ -10,8 +10,8 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
       cycle: 1, cycle_interval: 4, revision: 0, recovered: options.recovered ?? false, pending_save: false, last_error: null, interruption: options.interruption ?? null,
       settings: { focus_minutes: 25, short_break_minutes: 5, long_break_minutes: 15, long_break_interval: 4, sound_enabled: false, auto_start_next: false }, records: options.lastRecord ? [{ id: 'session-9', phase: 'focus', started_unix_ms: Date.now(), active_ms: 1_500_000, outcome: 'completed', task: { id: 'task-1', title: 'Write tests' } }] : [],
     };
-    const desktop = { revision: 0, preferences: { volume: 60, theme: 'dark',
-      opacity_percent: options.opacity ?? 100, pinned: true, notifications: true, close_to_tray: true },
+    const desktop = { revision: 0, platform: options.platform ?? 'windows', preferences: { volume: 60, theme: 'dark',
+      opacity_percent: options.opacity ?? 100, pinned: true, notifications: true, close_to_tray: true, menu_bar_visible: true, dock_hidden: false },
       audio_status: 'Native playback', notification_status: 'OS controlled', power_status: 'Test adapter' };
     const reportDate = new Date(); reportDate.setHours(9, 0, 0, 0);
     const started = reportDate.getTime();
@@ -31,7 +31,7 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
         if (command === 'get_snapshot') return structuredClone(state);
         if (command === 'get_desktop_state') return structuredClone(desktop);
         if (command === 'timer_defaults') return { focus_minutes: 25, short_break_minutes: 5, long_break_minutes: 15, long_break_interval: 4, sound_enabled: true, auto_start_next: false };
-        if (command === 'desktop_defaults') return { volume: 60, theme: 'dark', opacity_percent: 100, pinned: true, notifications: true, close_to_tray: true };
+        if (command === 'desktop_defaults') return { volume: 60, theme: 'dark', opacity_percent: 100, pinned: true, notifications: true, close_to_tray: true, menu_bar_visible: true, dock_hidden: false };
         if (command === 'list_tasks') return [{ id: 'task-1', title: 'Write tests', completed: false }, { id: 'task-2', title: 'Review requirements', completed: true }];
         if (command === 'daily_totals' && options.emptyReports) return { pomodoro_ms: 0, stopwatch_ms: 0, pomodoro_sessions: 0, stopwatch_sessions: 0 };
         if (command === 'daily_totals') { const pomo = reportRows.filter(row => row.phase === 'focus'); const sw = reportRows.filter(row => row.phase === 'stopwatch'); const sum = (rows: { active_ms: number }[]) => rows.reduce((total, row) => total + row.active_ms, 0); return { pomodoro_ms: sum(pomo), stopwatch_ms: sum(sw), pomodoro_sessions: pomo.length, stopwatch_sessions: sw.length }; }
@@ -257,16 +257,23 @@ test('settings restore buttons bring back defaults', async ({ page }) => {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const timerCard = page.locator('.settings-card', { hasText: 'Timer preferences' });
   const desktopCard = page.locator('.settings-card', { hasText: 'Desktop preferences' });
-  page.on('dialog', dialog => void dialog.accept());
+  const dialog = page.getByRole('dialog');
   await page.getByLabel('Focus duration').fill('30');
   await expect(timerCard.getByRole('status')).toHaveText('Saved');
   await page.getByRole('button', { name: 'Restore defaults' }).click();
+  await expect(dialog.getByRole('heading', { name: 'Restore default timer settings?' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Restore defaults' }).click();
   await expect(timerCard.getByRole('status')).toHaveText('Saved');
   await expect(page.getByLabel('Focus duration')).toHaveValue('25');
   await expect(page.getByLabel('Play a completion tone')).toBeChecked();
   await page.getByLabel('Appearance theme').selectOption('light');
   await expect(desktopCard.getByRole('status')).toHaveText('Saved');
   await page.getByRole('button', { name: 'Restore desktop defaults' }).click();
+  await expect(dialog.getByRole('heading', { name: 'Restore default desktop settings?' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByLabel('Appearance theme')).toHaveValue('light');
+  await page.getByRole('button', { name: 'Restore desktop defaults' }).click();
+  await dialog.getByRole('button', { name: 'Restore desktop defaults' }).click();
   await expect(desktopCard.getByRole('status')).toHaveText('Saved');
   await expect(page.getByLabel('Appearance theme')).toHaveValue('dark');
   await page.getByRole('button', { name: 'Timer', exact: true }).click();
@@ -352,15 +359,41 @@ test('settings reset reports clears recorded sessions everywhere', async ({ page
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
   await expect(page.locator('.report-card tbody tr')).toHaveCount(2);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const dialogShown = page.waitForEvent('dialog');
-  const clickReset = page.getByRole('button', { name: 'Reset reports', exact: true }).click();
-  const dialog = await dialogShown;
-  expect(dialog.message()).toContain('Delete every recorded session');
-  await dialog.accept();
-  await clickReset;
+  await page.getByRole('button', { name: 'Reset reports', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('Delete every recorded session');
+  await dialog.getByRole('button', { name: 'Reset reports' }).click();
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
   await expect(page.getByText('No sessions in this range')).toBeVisible();
   await page.getByRole('button', { name: 'Timer', exact: true }).click();
   await expect(page.getByText('No sessions yet.')).toBeVisible();
   await expect(page.locator('.summary-card .summary-row').first()).toContainText('0 min · 0');
+});
+
+test('reports tab and page use the chart icon', async ({ page }) => {
+  await mockDesktop(page); await page.goto('/');
+  const chart = 'M4 4v16h16M8 20v-9M12 20V8M16 20v-7';
+  await expect(page.getByRole('navigation').getByRole('button', { name: 'Reports', exact: true }).locator('path')).toHaveAttribute('d', chart);
+  await page.getByRole('button', { name: 'Reports', exact: true }).click();
+  await expect(page.locator('.report-card .card-title path')).toHaveAttribute('d', chart);
+});
+
+test('macOS settings show menu bar and dock options instead of tray close', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, platform: 'macos' }); await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const desktopCard = page.locator('.settings-card', { hasText: 'Desktop preferences' });
+  await expect(page.getByLabel('Show in menu bar')).toBeChecked();
+  const dock = page.getByLabel('Hide Dock icon');
+  await expect(dock).not.toBeChecked();
+  await expect(dock).toBeEnabled();
+  await expect(page.getByLabel('Close to system tray instead of exiting')).toHaveCount(0);
+  await expect(page.getByText('macOS notification settings and Focus modes')).toBeVisible();
+  await expect(page.getByText('Closing the main window always keeps the app running.')).toBeVisible();
+  await page.getByLabel('Show in menu bar').uncheck();
+  await expect(dock).toBeDisabled();
+  await page.getByLabel('Show in menu bar').check();
+  await expect(dock).toBeEnabled();
+  await dock.check();
+  await expect(desktopCard.getByRole('status')).toHaveText('Saved');
+  await expect(dock).toBeChecked();
 });
