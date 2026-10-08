@@ -103,8 +103,19 @@ fn probe(app: &tauri::AppHandle) -> Result<(), String> {
     candidate.pinned = false;
     controls.save(app, candidate.clone())?;
     let compact = app.get_webview_window("compact").ok_or("Missing compact")?;
-    if compact.is_always_on_top().map_err(|e| e.to_string())? {
-        return Err("Pinning did not update the native window".into());
+    // Linux reports always-on-top only after the window manager acknowledges a
+    // mapped window, so pin while visible and allow the round-trip to land.
+    // Use the real command so show-time sizing is exercised as well.
+    open_compact(app.clone())?;
+    let pin_deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if !compact.is_always_on_top().map_err(|e| e.to_string())? {
+            break;
+        }
+        if Instant::now() >= pin_deadline {
+            return Err("Pinning did not update the native window".into());
+        }
+        thread::sleep(Duration::from_millis(50));
     }
     ui_step(
         app,

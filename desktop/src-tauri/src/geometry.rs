@@ -138,6 +138,16 @@ impl GeometryService {
     }
 }
 
+/// Persisted compact size from the windows preference, or 200x44 when the
+/// preference is absent, corrupt, or fails validation.
+pub fn compact_size_from_pref(raw: Option<&str>) -> (f64, f64) {
+    raw.and_then(|raw| serde_json::from_str::<BTreeMap<String, Placement>>(raw).ok())
+        .and_then(|map| map.get("compact").cloned())
+        .filter(|placement| placement.validate("compact").is_ok())
+        .map(|placement| (placement.width, placement.height))
+        .unwrap_or((200.0, 44.0))
+}
+
 pub fn restore(window: &WebviewWindow, placement: &Placement) -> Result<(), String> {
     placement.validate(window.label())?;
     window
@@ -191,6 +201,32 @@ mod tests {
         assert_eq!(
             clamp_position(1850, 1000, 400, 88, &[(0, 0, 1920, 1040)]),
             Some((1520, 952))
+        );
+    }
+    #[test]
+    fn compact_size_pref_falls_back_to_default() {
+        assert_eq!(compact_size_from_pref(None), (200.0, 44.0));
+        assert_eq!(compact_size_from_pref(Some("not json")), (200.0, 44.0));
+        assert_eq!(compact_size_from_pref(Some("{}")), (200.0, 44.0));
+        assert_eq!(
+            compact_size_from_pref(Some(
+                r#"{"main":{"x":0,"y":0,"width":960.0,"height":680.0}}"#
+            )),
+            (200.0, 44.0)
+        );
+        // Invalid sizes never escape validation.
+        assert_eq!(
+            compact_size_from_pref(Some(
+                r#"{"compact":{"x":0,"y":0,"width":10.0,"height":10.0}}"#
+            )),
+            (200.0, 44.0)
+        );
+        // A legitimately grown strip is re-applied on open.
+        assert_eq!(
+            compact_size_from_pref(Some(
+                r#"{"compact":{"x":0,"y":0,"width":320.0,"height":44.0}}"#
+            )),
+            (320.0, 44.0)
         );
     }
     #[test]

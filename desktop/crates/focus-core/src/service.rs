@@ -236,6 +236,7 @@ impl TimerService {
                         None
                     };
                     if let Some(Request::Apply(command, response)) = request {
+                        eprintln!("DIAG2 service Apply received");
                         reply = Some(response);
                         if command == Command::RetrySave {
                             action = Some(pending.clone().unwrap_or(Command::Pause));
@@ -295,7 +296,9 @@ impl TimerService {
                                 }
                                 continue;
                             }
-                            Ok(record) => match store.save(&candidate, now, record.as_ref()) {
+                            Ok(record) => {
+                                eprintln!("DIAG2 service store.save start");
+                                match store.save(&candidate, now, record.as_ref()) {
                                 Ok(()) => {
                                     engine = candidate;
                                     recovered = false;
@@ -319,6 +322,8 @@ impl TimerService {
                                     last_error =
                                         Some(format!("Could not save on this device: {error}"));
                                 }
+                                }
+                                eprintln!("DIAG2 service store.save done");
                             },
                         }
                         revision += 1;

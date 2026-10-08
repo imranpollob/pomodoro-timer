@@ -36,6 +36,7 @@ async fn get_snapshot(
     #[cfg(not(feature = "smoke-test"))]
     let _ = window;
     let service = service.inner().clone();
+    eprintln!("DIAG2 get_snapshot entry");
     tauri::async_runtime::spawn_blocking(move || service.snapshot())
         .await
         .map_err(|e| e.to_string())?
@@ -46,10 +47,18 @@ async fn timer_command(
     command: Command,
     service: State<'_, TimerService>,
 ) -> Result<Snapshot, String> {
+    eprintln!("DIAG2 timer_command entry tid={:?}", std::thread::current().id());
     let service = service.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || service.command(command))
-        .await
-        .map_err(|e| e.to_string())?
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        eprintln!("DIAG2 timer_command blocking-start");
+        let r = service.command(command);
+        eprintln!("DIAG2 timer_command blocking-done ok={}", r.is_ok());
+        r
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    eprintln!("DIAG2 timer_command exit ok={}", out.is_ok());
+    out
 }
 
 #[tauri::command]
@@ -132,6 +141,29 @@ async fn report_records(
         .map_err(|e| e.to_string())?
 }
 
+/// Size the Linux strip: GTK freezes a non-resizable window to its mapped size,
+/// so the Linux window stays resizable (see tauri.linux.conf.json) and is
+/// pinned to each target through min/max hints instead, keeping manual edge
+/// resizing disabled while programmatic grows and shrinks keep working.
+#[cfg(target_os = "linux")]
+fn size_compact(window: &tauri::WebviewWindow, width: f64, height: f64) -> Result<(), String> {
+    window
+        .set_min_size(Some(tauri::LogicalSize::new(200.0, 44.0)))
+        .map_err(|e| e.to_string())?;
+    window
+        .set_max_size(Some(tauri::LogicalSize::new(1200.0, 300.0)))
+        .map_err(|e| e.to_string())?;
+    window
+        .set_size(tauri::LogicalSize::new(width, height))
+        .map_err(|e| e.to_string())?;
+    window
+        .set_min_size(Some(tauri::LogicalSize::new(width, height)))
+        .map_err(|e| e.to_string())?;
+    window
+        .set_max_size(Some(tauri::LogicalSize::new(width, height)))
+        .map_err(|e| e.to_string())
+}
+
 fn show_main(app: &tauri::AppHandle) -> Result<(), String> {
     let main = app
         .get_webview_window("main")
@@ -171,6 +203,17 @@ fn open_compact(app: tauri::AppHandle) -> Result<(), String> {
         .get_webview_window("compact")
         .ok_or("Compact window unavailable")?;
     compact.show().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "linux")]
+    {
+        // Re-apply the persisted size now that the strip is mapped.
+        let (width, height) = app
+            .state::<TimerService>()
+            .preference("windows")
+            .map(|raw| geometry::compact_size_from_pref(raw.as_deref()))
+            .unwrap_or((200.0, 44.0));
+        size_compact(&compact, width, height)?;
+    }
+    let _ = app.emit("compact-shown", ());
     geometry::ensure_visible(&compact, None)?;
     compact.set_focus().map_err(|e| e.to_string())?;
     // Main stays available: a missing Linux tray never strands the app.
@@ -187,12 +230,16 @@ fn close_compact(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn resize_compact(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
+    eprintln!("DIAG2 resize_compact {width}x{height}");
     if !(200.0..=1200.0).contains(&width) || !(44.0..=300.0).contains(&height) {
         return Err("Invalid compact size".into());
     }
     let window = app
         .get_webview_window("compact")
         .ok_or("Compact window unavailable")?;
+    #[cfg(target_os = "linux")]
+    size_compact(&window, width, height)?;
+    #[cfg(not(target_os = "linux"))]
     window
         .set_size(tauri::LogicalSize::new(width, height))
         .map_err(|e| e.to_string())?;
@@ -238,6 +285,7 @@ async fn save_desktop_preferences(
 
 #[tauri::command]
 async fn compact_menu(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    eprintln!("DIAG2 compact_menu entry");
     let service = app.state::<TimerService>().inner().clone();
     let snapshot = tauri::async_runtime::spawn_blocking(move || service.snapshot())
         .await
@@ -271,7 +319,10 @@ async fn compact_menu(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Re
     )
     .map_err(|e| e.to_string())?;
     let menu = Menu::with_items(&app, &[&close, &open, &pin, &sound]).map_err(|e| e.to_string())?;
-    window.popup_menu(&menu).map_err(|e| e.to_string())
+    eprintln!("DIAG2 compact_menu popup start");
+    let out = window.popup_menu(&menu).map_err(|e| e.to_string());
+    eprintln!("DIAG2 compact_menu popup done ok={}", out.is_ok());
+    out
 }
 
 fn menu_action(app: &tauri::AppHandle, id: &str) {
@@ -358,11 +409,18 @@ pub fn run() {
                 .unwrap_or(app.path().app_data_dir()?);
             std::fs::create_dir_all(&path)?;
             let publish = app.handle().clone();
+            let publish_log = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let publish_count = publish_log.clone();
             let notification = app.handle().clone();
             let service = TimerService::spawn(
                 Store::open(&path.join("prototype.sqlite3"))?,
                 Arc::new(SystemClock::default()),
                 move |snapshot| {
+                    let n = publish_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    eprintln!(
+                        "DIAG_PUBLISH n={n} rev={} status={} active_ms={}",
+                        snapshot.revision, snapshot.timer.status, snapshot.timer.active_ms
+                    );
                     let _ = publish.emit("timer-state", &snapshot);
                     if snapshot.pending_save {
                         let _ = show_main(&publish);

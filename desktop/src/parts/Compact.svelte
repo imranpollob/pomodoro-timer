@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { invoke } from '../lib/desktop';
+  import { invoke, listen } from '../lib/desktop';
   import { actionLabel, formatTime, phaseLabel, type Snapshot } from '../lib/types';
   import Icon from './Icon.svelte';
   let { state, busy, send, error }: { state: Snapshot; busy: boolean; send: () => void; error: (message: string) => void } = $props();
@@ -17,15 +17,21 @@
     } else if (event.key === 'Escape') { event.preventDefault(); void desktop('close_compact'); }
     else if (event.code === 'Space') { event.preventDefault(); send(); }
   }
+  function measure() {
+    const font = parseFloat(getComputedStyle(timeRegion).fontSize);
+    const width = Math.max(200, Math.ceil(timeRegion.scrollWidth + 50));
+    const height = Math.max(44, Math.ceil(font * 1.5));
+    void invoke('resize_compact', { width, height }).catch(e => error(String(e)));
+  }
   onMount(() => {
-    const observer = new ResizeObserver(() => {
-      const font = parseFloat(getComputedStyle(timeRegion).fontSize);
-      const width = Math.max(200, Math.ceil(timeRegion.scrollWidth + 50));
-      const height = Math.max(44, Math.ceil(font * 1.5));
-      void invoke('resize_compact', { width, height }).catch(e => error(String(e)));
-    });
+    const observer = new ResizeObserver(() => measure());
     observer.observe(timeRegion);
-    return () => observer.disconnect();
+    // Re-measure on show: sizing while hidden can miss the mapped window.
+    let unlisten: (() => void) | undefined;
+    void listen('compact-shown', () => measure())
+      .then(stop => { unlisten = stop; })
+      .catch(e => error(String(e)));
+    return () => { observer.disconnect(); unlisten?.(); };
   });
 </script>
 

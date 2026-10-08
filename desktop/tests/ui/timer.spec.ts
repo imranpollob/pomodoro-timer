@@ -397,3 +397,12 @@ test('macOS settings show menu bar and dock options instead of tray close', asyn
   await expect(desktopCard.getByRole('status')).toHaveText('Saved');
   await expect(dock).toBeChecked();
 });
+
+test('Linux settings show tray close and desktop notification hint', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, platform: 'linux' }); await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByLabel('Close to system tray instead of exiting')).toBeChecked();
+  await expect(page.getByText("your Linux desktop's notification settings")).toBeVisible();
+  await expect(page.getByText('Windows notification settings')).toHaveCount(0);
+  await expect(page.getByLabel('Show in menu bar')).toHaveCount(0);
+});

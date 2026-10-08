@@ -416,7 +416,11 @@
               <label class="checkbox-row"><input type="checkbox" bind:checked={desktopDraft.dock_hidden} disabled={!desktopDraft.menu_bar_visible} />Hide Dock icon</label>
               <p class="muted">Hiding the Dock icon requires the menu bar icon so the app stays reachable. Closing the main window always keeps the app running.</p>
             {:else}
-              <p class="muted">Notification delivery also depends on Windows notification settings and Focus Assist. </p>
+              {#if desktop.platform === 'linux'}
+                <p class="muted">Notification delivery also depends on your Linux desktop's notification settings.</p>
+              {:else}
+                <p class="muted">Notification delivery also depends on Windows notification settings and Focus Assist. </p>
+              {/if}
               <label class="checkbox-row"><input type="checkbox" bind:checked={desktopDraft.close_to_tray} />Close to system tray instead of exiting</label>
             {/if}
             <div class="form-actions"><span class="save-status" role="status">{desktopSaveStatus}</span><button class="secondary" type="button" onclick={() => void restoreDesktopDefaults()}>Restore desktop defaults</button></div>
