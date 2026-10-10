@@ -2,6 +2,8 @@
 
 Status: accepted for the M1 experiment, October 4, 2026. Final stack acceptance remains conditional on three-platform capability evidence.
 
+Note, October 2026: the v1 Python app was removed and the Tauri app promoted to the repository root as the v1 product with identity `com.imranpollob.pomodoro-timer`. The separate-`desktop/` and beta-identity parts of this decision are superseded; the domain and persistence seams still hold.
+
 ## Decision
 
 Use `desktop/` for Tauri 2, a Rust workspace, Svelte 5/TypeScript and SQLite. Keep the Python implementation, dependencies, data paths and release workflow available during beta development. Use the beta identifier `com.imranpollob.pomodoro-timer.beta` and a separate data directory. Do not import legacy files or change remote JSONBin records during this experiment. The October 5 MVP decision keeps legacy import and JSONBin sync out of MVP.

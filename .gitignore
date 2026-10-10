@@ -1,59 +1,23 @@
-motivating-projects/
-
-# Python virtual environments
-.venv/
-venv/
-env/
-ENV/
-env.bak/
-venv.bak/
-
-# Byte-compiled / optimised files
+# Python helper scripts (smoke/seed harnesses run with system Python)
 __pycache__/
 *.py[cod]
 *$py.class
-*.pyo
+.venv/
+venv/
 
-# Distribution / packaging
-build/
+# Rust build output
+target/
+src-tauri/gen/
+
+# Frontend dependencies and build output
+node_modules/
 dist/
-*.egg-info/
-.eggs/
-wheels/
-*.egg
-MANIFEST
-
-# PyInstaller
-*.spec
-
-# Test & coverage
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-.tox/
-nosetests.xml
-coverage.xml
-*.cover
-
-# Type checkers & linters
-.mypy_cache/
-.ruff_cache/
-.pytype/
-pyrightconfig.json
-
-# Version management
-.python-version
-
-# uv
-uv.lock
-
-# PyPI config
-pip-log.txt
+playwright-report/
+test-results/
+.demo-profile/
 
 # Packaging outputs
-pomodoro.pkg
-deb_workspace/
+build/
 *.deb
 
 # OS / editor
@@ -64,11 +28,3 @@ deb_workspace/
 
 # Tool data
 .mimocode/
-
-# Tauri prototype
-desktop/node_modules/
-desktop/target/
-desktop/.demo-profile/
-desktop/src-tauri/gen/
-desktop/test-results/
-desktop/playwright-report/

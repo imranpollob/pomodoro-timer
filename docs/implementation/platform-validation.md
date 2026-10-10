@@ -1,8 +1,8 @@
-# Native prototype validation
+# Native app validation
 
-M0 is closed following the user's confirmation that Windows/macOS/Linux CI passed. These checks apply to the **new Tauri prototype**, whose platform gate remains open. The new workflow builds beta packages and runs native IPC smoke tests on all three OSs; its remote results are pending.
+M0 is closed following the user's confirmation that Windows/macOS/Linux CI passed. These checks apply to the **Tauri app**, whose platform gate remains open; the legacy Python app was removed in October 2026 and the app promoted to the repository root as v1. The workflow builds unsigned packages and runs native IPC smoke tests on all three OSs; its remote results are pending.
 
-The October 5 MVP task, daily-summary, and compact-close changes have only passed frontend build and Rust compile/format checks so far. They have not been exercised in the installed app or test suites; earlier Windows UIA results below do not accept these newer flows.
+The October 5 MVP task, daily-summary, and compact-close changes have since gained browser-fixture coverage but still need installed-app runtime acceptance; earlier Windows UIA results below do not accept these newer flows.
 
 ## Available evidence
 
@@ -11,7 +11,7 @@ The October 5 MVP task, daily-summary, and compact-close changes have only passe
 | Windows 11 Home 10.0.26300, x64, 125% DPI | 20 Rust / 6 frontend / 6 browser UI tests pass; native development launch user-confirmed | Native rendered controls, real IPC and SQLite passed | Unsigned current-user NSIS install / normal UIA / uninstall passed | Background keys, pinning, compact geometry, single-instance and restart recovery automated; physical power cycle/Narrator/manual delivery pending |
 | WSL Ubuntu 26.04.1, x86_64, Xvfb | Rust tests/build/lint passed | Both webviews and SQLite smoke passed | Pending | Physical desktop checks pending |
 | User's native macOS | Pending | Pending | Pending | Pending |
-| User's native Linux | Pending | Pending | Pending | Pending |
+| Linux Mint 22.3, x86_64, Cinnamon X11 (Oct 10, 2026) | 22 Rust core / 8 native / 6 Vitest / 23 UI tests pass; fmt/Clippy clean | Native smoke 3/3 incl. 200x44 compact geometry | .deb built, t64 Depends fixed and satisfiable; pre-graduation install + launch user-confirmed | Tray/audio/notification/suspend/Orca/scales pending |
 
 WSL/Xvfb establishes compilation, webview IPC and storage behavior. A browser fixture verifies rendered UI interactions. Record native evidence separately; neither establishes physical audio delivery, desktop tray visibility, screen-reader support, suspend behavior or installed-package readiness.
 
@@ -27,11 +27,11 @@ The audio device accepted native playback and the installed notification request
 
 ## Test record
 
-For each run, record date, commit SHA, OS/version, CPU architecture, desktop environment, Wayland/X11 session, display scale, package/build type and command. Use an isolated `POMODORO_BETA_DATA_DIR` and no real credentials. Attach results/screenshots and concise reproduction steps for failures. Do not mark an unsupported capability passed because its API call returned success.
+For each run, record date, commit SHA, OS/version, CPU architecture, desktop environment, Wayland/X11 session, display scale, package/build type and command. Use an isolated `POMODORO_DATA_DIR` and no real credentials. Attach results/screenshots and concise reproduction steps for failures. Do not mark an unsupported capability passed because its API call returned success.
 
 ## Installed-build journey
 
-1. Build a normal prototype package using [desktop/README.md](../../desktop/README.md), install it, and launch without development servers. Confirm beta identity and isolated data directory.
+1. Build a normal package using [README.md](../../README.md), install it, and launch without development servers. Confirm app identity and isolated data directory.
 2. Start focus, pause, wait, resume, finish; confirm one record and active time excluding pauses. Change durations mid-session; confirm that only the next session changes. Exercise stopwatch above an hour.
 3. Create, rename, complete/uncomplete, and remove tasks. Select an incomplete task for the next session; start and finish it; confirm the saved session retains its title after rename/removal. Confirm today's local-day totals reconcile to saved focus and stopwatch sessions and exclude breaks.
 4. Open compact: exactly one visible play/pause action at 200 × 44 for countdown. Check time/phase, Space, Enter, double-click, right-click, Shift+F10, drag, pin and main-window reopen. Close with Escape and **Close compact timer**; verify the timer continues and main is not automatically focused. Reopen by tray.
@@ -45,4 +45,4 @@ For each run, record date, commit SHA, OS/version, CPU architecture, desktop env
 
 ## Gate decision
 
-MVP acceptance is open. Windows feature changes need an installed-app run; physical Windows checks above remain open. Native macOS and Linux acceptance is pending until the user is on those platforms. Record missing adapters and defects here. Do not declare MVP complete until installed journeys and required native capabilities pass on all three OSs.
+MVP acceptance is open. Windows feature changes need an installed-app run; physical Windows checks above remain open. Linux automated verification passed on October 10; its installed-app journey and physical checks plus all macOS acceptance remain. Record missing adapters and defects here. Do not declare MVP complete until installed journeys and required native capabilities pass on all three OSs.
