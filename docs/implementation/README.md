@@ -1,11 +1,12 @@
-# Implementation
+# Implementation documentation
 
-See the [implementation log](implementation-log.md) for completed stabilization changes, test results, remaining platform gates, and the next batch.
+The current scope is the concise [MVP implementation plan](implementation-plan.md). It covers the timer, task-linked sessions, today's summary, rolling/custom reports, appearance settings, desktop controls, local persistence, and the Windows-first three-platform acceptance path.
 
-See [the implementation plan](implementation-plan.md) for the roadmap, delivery gates, migration design, and product concepts.
+- [Backlog](backlog.md): current implementation and acceptance status.
+- [Implementation log](implementation-log.md): dated changes and verification evidence.
+- [Platform validation](platform-validation.md): installed-app and native OS checks.
+- [UI specification](ui-design-spec.md): behavior for MVP windows and controls.
+- [Architecture decisions](architecture/): recorded architecture choices.
+- [Mockup gallery](mockups/v2/README.md): visual concepts, including designs deferred beyond MVP.
 
-See the [complete revision-2 mockup gallery](mockups/v2/README.md) for all 18 boards, including dialogs, recovery, settings, native integrations, and later-release concepts.
-
-The [UI design specification](ui-design-spec.md) maps planned windows and states to the boards and defines interaction/accessibility requirements. Compact mode targets 200 × 44 logical pixels with one visible play/pause control; other actions use a context menu and keyboard equivalents.
-
-Visuals are approximate design concepts. The written specification defines behavior; Windows, macOS, and Linux remain mandatory.
+Windows is the current work platform. macOS and Linux acceptance remains mandatory when those systems are available. Historical reviews and generated concepts do not expand MVP scope.

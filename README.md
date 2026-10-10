@@ -1,178 +1,168 @@
 # Pomodoro Timer
-A desktop Pomodoro timer and stopwatch app that always stays on top. It includes todo management, daily stats, syncing, and more.
 
+Tauri 2 / Rust / Svelte focus timer with main and compact windows, tasks, reports, and SQLite persistence. The application identity is (`com.imranpollob.pomodoro-timer`) with its own SQLite profile; the legacy Python app was removed in October 2026 (see git history) and its data is neither imported nor modified. Upgrading from `0.3.1` or the `0.1.0-beta.1` builds? See [MIGRATION.md](MIGRATION.md).
 
+## Run locally
 
-## Quick Start
+Install the [Tauri native prerequisites](https://v2.tauri.app/start/prerequisites/), Rust through rustup, and Node **24.19.0** (npm **11.17.0**). Rust **1.99.0**, rustfmt, and Clippy are selected by `rust-toolchain.toml`. Frontend dependencies and Cargo dependencies are locked.
 
-### Download
-Prebuilt executables for Windows, macOS, and Linux are published on the [Releases page](../../releases).
+- Windows: Microsoft C++ Build Tools with Desktop development with C++, and WebView2.
+- macOS: Xcode Command Line Tools (`xcode-select --install`).
+- Ubuntu/Debian: WebKitGTK 4.1, GTK 3, AppIndicator, OpenSSL, ALSA headers (`libasound2-dev`), librsvg and build tools. See the prerequisite guide and `.github/workflows/ci.yml` for packages.
 
-### Command Line
-Requires the `uv` package manager. Run:
-```bash
-uv run src/pomodoro.py
+```text
+npm ci
+npm run tauri -- dev
 ```
 
+`npm run dev` alone opens the frontend with a desktop-connection message; production code never substitutes a browser timer for the Rust authority.
 
+### Seed demo data for UI review
 
-## Features
-- Customizable Pomodoro cycles: Work, Short Break, Long Break
-- Endless Stopwatch mode
-- Todo management
-- Optional todo sync across devices via [JSONBin](https://jsonbin.io)
-- Daily Report
-- Adjustable font size
-- Always on top, with transparency option (transparency support on macOS is in progress)
-- Remembers and restores custom window dimensions
+To inspect Tasks, rolling 7-day/30-day and custom Reports, and settings, run the seeder while the app is closed. It adds four demo tasks and two months of focus, short/long break, stopwatch, completed, skipped, and interrupted sessions to the selected profile. Existing tasks, sessions, settings, and checkpoints are kept. Stable IDs make repeated runs safe and avoid duplicate demo records. On Windows, macOS, and Linux the default is the Tauri app-data directory; `POMODORO_DATA_DIR` or `--profile PATH` selects another profile. Restart the app after seeding so tasks and reports reload.
 
+Windows PowerShell, from the repo root:
 
-
-## Screenshots
-
-![main](images/main.png)
-
-![stopwatch](images/stopwatch.png)
-
-![maximized](images/maximized.png)
-
-![todos](images/todos.png)
-
-![settings](images/settings.png)
-
-![report](images/report.png)
-
-
-
-
-## Setup
-
-We use `uv` for dependency management. Install it from [here](https://docs.astral.sh/uv/getting-started/installation/) if you don't have it.
-
-### Run directly (all platforms)
-```bash
-uv run src/pomodoro.py
+```powershell
+python scripts/seed_demo_profile.py
+npm run tauri -- dev
 ```
 
-### Linux — Install as a desktop app (.deb)
-Build and install a native `.deb` package for full desktop integration:
+macOS/Linux, from the repo root:
 
-```bash
-./build_deb.sh
-sudo dpkg -i pomodoro-timer_amd64.deb
+```sh
+python3 scripts/seed_demo_profile.py
+npm run tauri -- dev
 ```
 
-### Windows — Build standalone executable
-```bash
-uv run pyinstaller --clean --noconfirm pomodoro.spec
-```
-Then run `dist/pomodoro.exe`.
+Pass `--profile PATH` to seed a different profile. Close the app before seeding to avoid competing writers.
 
-### Windows — Build installer (.exe)
-Creates a proper Windows installer with Start Menu shortcut and Add/Remove Programs entry.
-Requires [NSIS](https://nsis.sourceforge.io/Download) installed and `makensis` in your PATH.
+### Windows first-time setup
 
-```bash
-.\build_windows.bat
-```
-Then run `dist/pomodoro-timer-setup.exe` to install.
+Node/npm alone are insufficient to launch the native application. If Tauri reports `cargo metadata ... program not found`, Rust/Cargo is missing or the terminal has not picked up its installation. Install the C++ workload from an **administrator PowerShell**, and Rust from your normal user PowerShell:
 
-### macOS — Build standalone app bundle
-```bash
-uv run pyinstaller --clean --noconfirm pomodoro.spec
-```
-Then run `open dist/Pomodoro.app` (or double-click the bundle in Finder).
-
-
-
-## Todo Sync (JSONBin)
-Todos can be synced across devices using [JSONBin](https://jsonbin.io) as free cloud storage. 
-
-### 1. Create a bin
-JSONBin doesn't allow creating an empty bin, so seed it with a sample todo.
-1. Sign up / log in at [jsonbin.io](https://jsonbin.io).
-2. Go to **Bins** and click **Create a Bin**.
-3. Paste the following as the bin content and save:
-   ```json
-   [
-       {
-           "id": 1,
-           "text": "Sample todo",
-           "done": false
-       }
-   ]
-   ```
-4. Copy the **Bin ID** shown for that bin — you'll need it in step 3.
-
-### 2. Create a scoped access key
-
-1. Go to **API Keys** and click **Create Access Key**.
-2. Give it a name (e.g. `pomodoro-todos`)
-3. Grant **Read** and **Update** permissions
-4. Copy the generated **X-Access-Key** value, not the shorter 'Access Key ID'.
-
-### 3. Configure the app
-1. Open **Settings** in the app.
-2. Under **JSONBin Sync**, paste the **Bin ID** from step 1 and the **Access Key** from step 2.
-3. Click **Save Settings**.
-
-### 4. Sync
-Open the **Todos** window — it syncs automatically. 
-
-
-
-## Contribution Guidelines 
-
-### Versioning
-
-The app version is defined once in `pyproject.toml`. Platform builds read that value for the Settings window, the Linux `.deb` package, the Windows installer, and the macOS app bundle.
-
-Use `uv` to bump the version. This updates both `pyproject.toml` and the project entry in `uv.lock`; do not edit `uv.lock` manually:
-
-```bash
-uv version --bump patch
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --source winget --override "--wait --quiet --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+winget install --id Rustlang.Rustup --exact --source winget
 ```
 
-To publish a release, validate and commit the version change before creating the matching tag:
+The C++ workload includes MSVC and the Windows SDK; its installer requires administrator approval. Installer exit code **1602** indicates cancellation, not a completed installation. After both installations finish, restart the IDE and terminal so they pick up Cargo's PATH, then run:
 
-```bash
-VERSION=$(uv version --short)
-
-uv lock --check
-uv run pytest -q
-
-git add pyproject.toml uv.lock
-git commit -m "Bump version to ${VERSION}"
-
-git tag "v${VERSION}"
-git push origin HEAD
-git push origin "v${VERSION}"
+```powershell
+cd C:\Users\imran\Coding\pomodoro-timer
+rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
+cargo --version
+npm ci
+npm run tauri -- dev
 ```
 
-Pushing the tag triggers the `Release` GitHub Actions workflow, which builds Linux, Windows, and macOS packages and attaches them to a new GitHub Release. Use `uv version --bump minor` or `uv version --bump major` instead when appropriate.
+Use your checkout's path if different. Install [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) if Windows reports that it is missing. A `link.exe not found` or Windows SDK error means the C++ workload is incomplete; installing Rust alone does not supply these tools. Rust installed inside WSL is separate from native Windows Rust.
 
-### Configuration Files
-Settings (`settings.json`), tasks (`todos.json`), and session statistics (`history.json`) are stored in the user profile directory:
-- **Windows**: `%APPDATA%\pomodoro-timer\` (e.g., `C:\Users\<username>\AppData\Roaming\pomodoro-timer\`)
-- **macOS & Linux**: `~/.config/pomodoro-timer/`
+## Current app
 
-Set `POMODORO_DATA_DIR` before launching to use an isolated profile, for example when checking a development build. Only one normal app instance may use a profile at a time.
+- Pomodoro, short/long breaks, stopwatch, precise pause/resume and explicit finish confirmation.
+- Main window and **200 × 44** compact countdown with one action button. Click/double-click time, use an assistive-technology invoke, or press Enter there to reopen main; right-click/Shift+F10 opens the native menu. Escape or **Close compact timer** hides only the strip; it does not quit the app or reopen main. Space starts/pauses/resumes. Main remains reachable if the desktop has no tray.
+- Settings save automatically shortly after each edit; invalid timer values are skipped. On Windows and Linux, closing the main window hides it to the system tray by default while the timer keeps running; left-click the tray icon or choose Open Pomodoro to restore it, and Exit to quit. The close behavior can be changed in Settings. On macOS, closing the main window always keeps the app running; Dock-icon clicks reopen it, and Cmd+Q or Quit exits. macOS Settings offer Show in menu bar (default on) and Hide Dock icon (default off, requires the menu bar icon so the app stays reachable) instead of the close-to-tray option.
+- One serialized Rust service processes UI/tray commands. Window subscriptions accept monotonically increasing revisions. No frontend timer decrements session duration.
+- SQLite transactions save completed/interrupted/skipped sessions and paused checkpoints together. Checkpoints occur on transitions and every 15 seconds while running. Restart restores paused and excludes time while the process was absent. A crash can lose active time since the last checkpoint.
+- Failed saves freeze active time, block replacement sessions, and expose retry. Preferences apply to future sessions. The Tasks view supports add/edit/complete/remove; a task can be selected for the next session and its title is saved with the session. Removing a task preserves its title in existing session history.
+- The timer page shows a local-calendar-day total split between Pomodoro and stopwatch time and session counts. Reports is the only session-history page and includes all saved records in the selected range.
+- Reports open on Today and provide Last 7 days / Last 30 days presets (the preset matching the selected range is highlighted) and custom local-date ranges, aggregate and per-day focus summaries, and session rows with task titles and outcomes. CSV export and per-row Details actions are removed. A confirmed Reset reports action in Settings deletes every recorded session. An opt-in setting auto-starts the next focus/break only after natural timer completion; manual finish, skip, and stopwatch remain manual.
+- Appearance settings are a light/dark theme and compact-mode background opacity. All four pages use shared typography and concise content titles. Promotional headers and sidebar slogans are removed; Compact mode opens from the timer page.
+- Native audio works independently of webview visibility, with volume control and output-device errors. Completion notifications are on by default.
+- Windows suspend/lock broadcasts pause active work using the notification's timestamp; wake/unlock requires explicit resume. The listener bounds its checkpoint wait to one second. Failed/slow writes retain the existing retry/recovery boundaries. Native macOS/Linux suspend adapters remain pending.
+- SQLite stores desktop preferences, compact pinning, and debounced main/compact placement. Placement is clamped to connected monitor work areas on Windows. The compact strip keeps a fixed text size and grows automatically for long stopwatch hours; manual edge resizing is disabled. The compact strip has no native shadow to preserve its height on Windows.
 
-### Save errors and recovery
+Set `POMODORO_DATA_DIR` **before launching** to use an isolated profile. The default is Tauri's app-data directory for the app identifier. `pomodoro.sqlite3` and its WAL/SHM sidecars belong to this profile. Back up the whole profile with the app closed. Schema 3 upgrades earlier schemas transactionally and retains existing sessions/checkpoints. The schema remains versioned with no stable migration promise yet. Legacy Python data and old JSONBin data are not imported or modified.
 
-Writes preserve the previous valid file as a `.json.bak` backup. Unreadable data is not silently replaced; the original stays in place and a `.json.corrupt-<id>` copy is created when possible. Open **Recovery** from the app menu to select and validate a backup for settings, tasks, or history before restoring it.
+## Verify and build
 
-A failed session save shows **Retry save** and retains the unfinished session in memory. Fix the underlying file/access problem or restore history, then retry before closing. Force-quitting loses an unsaved in-memory session. Back up the profile separately for protection beyond the previous save.
-
-### Running tests
-```bash
-uv sync --locked
-uv run --locked python -m pytest -q
-uv run --locked python scripts/smoke_app.py
+```text
+npm run build
+npm test
+npx playwright install chromium
+npm run test:ui
+cargo fmt --all --check
+cargo test --locked -p focus-core
+cargo test --locked -p pomodoro-desktop --lib
+cargo clippy --locked --workspace --all-targets -- -D warnings
+npm run tauri -- build --ci -- --locked
 ```
 
-The GUI smoke uses temporary data and no sync credentials. Headless Linux needs a display such as `xvfb-run --auto-servernum`. PR CI checks Windows, macOS, and Linux, including package launch checks. See the [implementation log](docs/implementation/implementation-log.md) for verified results and remaining gates.
+Rust tests inject clocks and persistence failures. Vitest verifies event ordering and listener cleanup. Playwright exercises actual Svelte views with a test-only IPC fixture; it does not prove native menus, assistive technology, or OS behavior. Normal builds have no simulated backend or embedded test driver.
 
+The CI workflow creates **unsigned** `.deb`, NSIS and `.dmg` artifacts. It does not publish a release. Production packages use normal features. A separate executable with the `smoke-test` feature validates native webview IPC, shared commands, session persistence and checkpoint read-back:
 
-## Icon attribution
-<a href="https://www.flaticon.com/free-icons/timer" title="timer icons">Timer icons created by Freepik - Flaticon</a>
+```text
+cargo build --locked -p pomodoro-desktop --features custom-protocol,smoke-test
+python scripts/native_smoke.py target/debug/pomodoro-desktop
+```
+
+Use `.exe` on Windows; on headless Linux wrap the Python command with `dbus-run-session -- xvfb-run --auto-servernum`. The smoke uses a temporary profile and exits itself. Smoke code is compiled out of normal builds, and this feature must never be enabled for distributed artifacts.
+
+### Windows packages and normal-build checks
+
+From the repo root:
+
+```powershell
+npm run tauri -- build --ci --bundles nsis -- --locked
+uv venv build/windows-uia-env --python 3.12
+$testPython = (Resolve-Path build/windows-uia-env/Scripts/python.exe).Path
+uv pip install --python $testPython -r scripts/requirements-windows-ui.txt
+& $testPython scripts/windows_ui_smoke.py target/release/pomodoro-desktop.exe
+$installer = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+./scripts/windows_install_smoke.ps1 -Installer $installer.FullName -Python $testPython
+```
+
+Use a separate Python environment for the UI test dependencies. The harness drives a normal binary through Windows UI Automation, with temporary data and no embedded driver. It checks compact size, accessible reopen, settings save, single-instance behavior, checkpointing and restart recovery. An unlocked desktop session is required.
+
+The installer probe refuses to replace an existing installation, verifies its install directory inside the workspace, and removes only that test installation. Silent uninstall retains application data. These are unsigned packages; signing, updater and stable-release acceptance remain separate work.
+
+Sound and notification delivery require manual confirmation on the installed app; API success does not confirm hearing or receipt, and desktop permission APIs do not establish Windows Focus Assist or notification-center delivery.
+
+### Linux packages and normal-build checks
+
+Install the native prerequisites (same set as CI):
+
+```sh
+sudo apt-get update
+sudo apt-get install --yes build-essential libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libasound2-dev xvfb dbus-x11 x11-utils
+```
+
+From the repo root, build the package, repair its dependencies, and install:
+
+```sh
+npm run tauri -- build --ci --bundles deb -- --locked
+sh scripts/fix_deb_depends.sh target/release/bundle/deb/*.deb
+sudo apt-get install --yes ./target/release/bundle/deb/*.deb
+```
+
+`fix_deb_depends.sh` rewrites the bundler's `libgtk-3-0` dependency into a `libgtk-3-0t64 | libgtk-3-0` alternate and adds the ALSA runtime the audio backend needs. The unpatched package refuses to install on Ubuntu 24.04+, Linux Mint 22+, and Debian 13+; the script is idempotent and leaves the data archive untouched. The `N: Download is performed unsandboxed ... _apt` notice during install is harmless; confirm with `dpkg -l pomodoro`.
+
+Launch the installed app with an isolated profile for acceptance checks:
+
+```sh
+POMODORO_DATA_DIR=/tmp/pomodoro-test pomodoro-desktop
+```
+
+`sudo apt-get remove pomodoro` removes the package but leaves per-user profile data in place.
+
+## Architecture and next gates
+
+`crates/focus-core` owns the clock-injected domain, service and SQLite access, without Tauri dependencies. `src-tauri` supplies windows, events, tray, notifications and process lifecycle. `src` contains presentation and typed IPC consumers.
+
+Use the [native platform checklist](docs/implementation/platform-validation.md). Windows development launch is user-confirmed, and installed-build automation is available. Linux automated checks pass on the user's machine; installed-app and physical Linux checks plus macOS work continue there. Three-platform support remains mandatory. Projects, legacy migration, cloud sync, data import/export, session-detail views, reset-today, custom theme creation, goals/reminders, and in-app updates are deferred beyond MVP.
+
+## Implemented views
+
+These screenshots show the implemented Svelte UI rendered by Playwright with fixture data on October 5, 2026. They illustrate the app; native platform appearance and capabilities require separate validation.
+
+![Main timer](docs/implementation/prototype-screenshots/main-timer.png)
+
+![Compact timer at 200 by 44](docs/implementation/prototype-screenshots/compact-timer.png)
+
+![Settings](docs/implementation/prototype-screenshots/settings.png)
+
+![Tasks](docs/implementation/prototype-screenshots/tasks.png)
+
+![Reports](docs/implementation/prototype-screenshots/reports.png)
