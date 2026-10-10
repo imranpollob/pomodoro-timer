@@ -28,6 +28,10 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
       async invoke(command: string, args: Record<string, any> = {}) {
         if (command === 'plugin:event|listen') { listeners.set(args.event, args.handler); return args.handler; }
         if (command === 'plugin:event|unlisten') return;
+        if (command === 'compact_menu') {
+          const w = window as any; (w.__menuCalls ??= []).push({ x: args.x, y: args.y });
+          return new Promise<void>(resolve => { w.__closeMenu = resolve; });
+        }
         if (command === 'get_snapshot') return structuredClone(state);
         if (command === 'get_desktop_state') return structuredClone(desktop);
         if (command === 'timer_defaults') return { focus_minutes: 25, short_break_minutes: 5, long_break_minutes: 15, long_break_interval: 4, sound_enabled: true, auto_start_next: false };
@@ -77,16 +81,39 @@ test('main timer pauses/resumes and finish dialog preserves keyboard focus', asy
   await page.screenshot({ path: 'test-results/main-timer.png' });
 });
 
-test('compact has one action button and fits 200 by 44', async ({ page }) => {
+test('compact has play and options buttons and fits 200 by 44', async ({ page }) => {
   await mockDesktop(page); await page.setViewportSize({ width: 200, height: 44 }); await page.goto('/?view=compact');
-  const action = page.locator('button');
-  await expect(action).toHaveCount(1);
+  await expect(page.locator('button')).toHaveCount(2);
+  const options = page.getByRole('button', { name: 'Options', exact: true });
+  await expect(options).toBeVisible();
+  const action = page.locator('.compact-action:not(.compact-options)');
   await expect(action).toHaveAccessibleName('Start focus');
   await action.click(); await expect(action).toHaveAccessibleName('Pause');
   await page.keyboard.press('Space'); await expect(action).toHaveAccessibleName('Resume');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(200);
-  const box = await action.boundingBox(); expect(box!.x + box!.width).toBeLessThanOrEqual(200);
+  const box = await options.boundingBox(); expect(box!.x + box!.width).toBeLessThanOrEqual(200);
+  expect(box!.width).toBeLessThan((await action.boundingBox())!.width);
   await page.screenshot({ path: 'test-results/compact-timer.png' });
+});
+
+test('compact options button opens the menu at a fixed spot and right-click does not', async ({ page }) => {
+  await mockDesktop(page); await page.setViewportSize({ width: 200, height: 44 }); await page.goto('/?view=compact');
+  const calls = () => page.evaluate(() => (window as any).__menuCalls ?? []);
+  await page.locator('.compact').click({ button: 'right', position: { x: 5, y: 5 } });
+  await page.locator('.compact-time').click({ button: 'right' });
+  expect(await calls()).toHaveLength(0);
+  const options = page.getByRole('button', { name: 'Options', exact: true });
+  const box = (await options.boundingBox())!;
+  await options.click();
+  await expect.poll(calls).toHaveLength(1);
+  expect((await calls())[0]).toEqual({ x: box.x, y: 44 });
+  await options.click(); // already open: no second menu
+  expect(await calls()).toHaveLength(1);
+  await page.evaluate(() => (window as any).__closeMenu());
+  await page.waitForTimeout(350);
+  await options.click({ position: { x: 4, y: 4 } });
+  await expect.poll(calls).toHaveLength(2);
+  expect((await calls())[1]).toEqual({ x: box.x, y: 44 });
 });
 
 test('timer preferences autosave and invalid values are skipped', async ({ page }) => {
@@ -207,14 +234,14 @@ test('desktop preferences autosave pinning, tray, notifications and appearance',
   await expect(page.getByLabel('Close to system tray instead of exiting')).not.toBeChecked();
 });
 
-test('compact fits long stopwatch hours without extra controls', async ({ page }) => {
+test('compact fits long stopwatch hours beside both buttons', async ({ page }) => {
   await mockDesktop(page, { seconds: 360_001 });
   await page.setViewportSize({ width: 400, height: 80 }); await page.goto('/?view=compact');
   const time = page.locator('.compact-time');
   await expect(time).toHaveText('100:00:01');
   await expect(time).toHaveCSS('font-size', '25px');
-  await expect(page.locator('button')).toHaveCount(1);
-  const digits = await time.boundingBox(); const button = await page.locator('button').boundingBox();
+  await expect(page.locator('button')).toHaveCount(2);
+  const digits = await time.boundingBox(); const button = await page.locator('button').first().boundingBox();
   expect(digits!.x + digits!.width).toBeLessThanOrEqual(button!.x);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(400);
 });

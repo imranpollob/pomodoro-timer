@@ -274,7 +274,12 @@ async fn save_desktop_preferences(
 }
 
 #[tauri::command]
-async fn compact_menu(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+async fn compact_menu(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    x: f64,
+    y: f64,
+) -> Result<(), String> {
     let service = app.state::<TimerService>().inner().clone();
     let snapshot = tauri::async_runtime::spawn_blocking(move || service.snapshot())
         .await
@@ -308,7 +313,11 @@ async fn compact_menu(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Re
     )
     .map_err(|e| e.to_string())?;
     let menu = Menu::with_items(&app, &[&close, &open, &pin, &sound]).map_err(|e| e.to_string())?;
-    window.popup_menu(&menu).map_err(|e| e.to_string())
+    // Anchored to the options button (logical, window-relative) so the menu opens in the same place
+    // every time instead of under the pointer.
+    window
+        .popup_menu_at(&menu, tauri::LogicalPosition::new(x, y))
+        .map_err(|e| e.to_string())
 }
 
 fn menu_action(app: &tauri::AppHandle, id: &str) {

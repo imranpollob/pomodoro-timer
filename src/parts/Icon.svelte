@@ -8,6 +8,7 @@
     compact: 'M4 4h16v16H4ZM8 13h8v4H8Z',
     play: 'M8 5v14l11-7Z', pause: 'M8 5v14M16 5v14',
     finish: 'M6 6h12v12H6Z', check: 'M5 12l4 4L19 6',
+    more: 'M12 5h.01M12 12h.01M12 19h.01',
   };
 </script>
 <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.timer} /></svg>

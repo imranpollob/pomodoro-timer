@@ -35,10 +35,10 @@ Use 16 px body text, labels, controls, and table rows; 20 px section titles; 14 
 
 ## Compact timer
 
-Target **200 × 44 logical pixels** and show only the time and one small play/pause button. Grow for long stopwatch hours; do not clip digits or add permanent controls.
+Target **200 × 44 logical pixels** and show the time, one small play/pause button and one small options button that opens the native menu. Grow for long stopwatch hours; do not clip digits or add other permanent controls.
 
 - Space starts/pauses/resumes. Clicking, double-clicking, Enter, or assistive-technology Invoke on the time opens main.
-- Right-click, Shift+F10, or the context-menu key opens the native menu.
+- The options button, Shift+F10, or the context-menu key opens the native menu anchored below the button; right-click does nothing. Clicking the button again dismisses it.
 - Escape, **Close compact timer**, or a native close request hides compact only. It must not stop the timer, quit the app, or automatically focus main. The tray can reopen it.
 - Close compact, open main, pin, and sound belong in the accessible context menu, in that order.
 - Keep task/phase context in the tooltip and accessible name without expanding the strip for long task titles.

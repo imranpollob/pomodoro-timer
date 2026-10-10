@@ -91,9 +91,10 @@ dl { display: grid; grid-template-columns: 100px 1fr; gap: 12px; font-size: var(
 .banner-dismiss { min-height: 36px; padding: 6px 12px; font-size: var(--text-caption); flex: 0 0 auto; }
 dialog { background: #19263a; color: #e6edfb; border: 1px solid #4c5c76; border-radius: 15px; padding: 28px; max-width: min(460px, 90vw); }dialog::backdrop { background: #0009; }.dialog-content > p:not(.eyebrow) { color: #bdcce1; font-size: var(--text-body); line-height: 1.6; margin-top: 16px; }
 .compact-document, .compact-document body { min-width: 200px; margin: 0; overflow: hidden; background: rgba(20, 29, 43, var(--compact-opacity, 1)); }
-.compact { display: grid; grid-template-columns: minmax(0, 1fr) 32px; align-items: center; gap: 8px; padding: 0 6px 0 10px; min-height: 44px; height: 100vh; box-shadow: inset 0 0 0 1px #33435c; }
+.compact { display: grid; grid-template-columns: minmax(0, 1fr) 32px 20px; align-items: center; gap: 8px; padding: 0 6px 0 10px; min-height: 44px; height: 100vh; box-shadow: inset 0 0 0 1px #33435c; }
 .compact-time { width: max-content; min-width: 0; white-space: nowrap; font-size: 25px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.6px; cursor: default; }
 .compact-action { background: #263b5d; border-radius: 6px; width: 32px; min-height: 32px; padding: 0; }.compact-action:focus-visible, .compact-time:focus-visible { outline-offset: -3px; }.compact-loading { font-size: 12px; height: 44px; display: grid; place-items: center; }
+.compact-options { width: 20px; background: transparent; }.compact-options:hover:not(:disabled) { background: #263b5d; }
 @media (max-width: 850px) { .app-shell { grid-template-columns: 180px minmax(0,1fr); }main { padding: 24px 20px; }.timer-layout { grid-template-columns: minmax(250px,1fr); }.focus-aside { grid-template-columns: 1fr 1fr; }.time-digits { font-size: 58px; }.timer-face { max-width: 290px; }.timer-card { max-width: 500px; }.sidebar { padding-inline: 12px; } }
 @media (max-width: 620px) { .report-totals { grid-template-columns: 1fr; }.report-toolbar > label { flex: 1 1 130px; }.report-presets { width: 100%; } }
 @media (max-width: 850px) { .compact-row { grid-column: 1 / -1; } }
