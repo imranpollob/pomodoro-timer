@@ -56,7 +56,7 @@ fn probe(app: &tauri::AppHandle) -> Result<(), String> {
     ui_step(
         app,
         "compact",
-        "await until(() => document.querySelector('.compact-action')?.getAttribute('aria-label') === 'Pause'); if (document.querySelectorAll('button').length !== 1) throw Error('Compact has extra controls'); document.querySelector('.compact-action').click(); await until(() => document.querySelector('.compact-action')?.getAttribute('aria-label') === 'Resume');",
+        "await until(() => document.querySelector('.compact-action')?.getAttribute('aria-label') === 'Pause'); const buttons = Array.from(document.querySelectorAll('button')).map(b => b.getAttribute('aria-label')); if (buttons.length !== 2 || buttons[1] !== 'Options') throw Error('Compact controls changed: ' + buttons); document.querySelector('.compact-action').click(); await until(() => document.querySelector('.compact-action')?.getAttribute('aria-label') === 'Resume');",
     )?;
     let paused = service.snapshot()?;
     if paused.timer.status != "paused" || paused.timer.active_ms < 30 {
