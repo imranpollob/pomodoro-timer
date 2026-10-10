@@ -1,77 +1,39 @@
 # Migration guide
 
-How to move from the legacy Python app or the beta builds to the v1 Tauri app, without losing data.
+This guide covers moving from the legacy Python app (`0.3.1`) to Pomodoro Timer `1.0.0`.
 
-## Pinned versions
+## What to expect
 
-| Stream | Version | Technology | Status |
-| --- | --- | --- | --- |
-| Legacy (v1) | `0.3.1` (git tag `v0.3.1`) | Python + Tk | Removed from this repo in October 2026; recoverable from git history and the Releases page |
-| Beta (interim) | `0.1.0-beta.1` | Tauri 2 + Rust + Svelte | Unsigned CI builds only, never released |
-| Current | `1.0.0` | Tauri 2 + Rust + Svelte | Primary version at the repository root |
+Pomodoro Timer `1.0.0` does not import data from the Python app. Back up your old profile before installing the new app. You can use the saved task list to recreate your tasks; session history remains available in the backup.
 
-## Scope
+## 1. Back up the Python profile
 
-- There is **no automatic importer**. Legacy JSON data is not converted, and beta profiles are not moved for you. Both paths below are short manual procedures.
-- Back up before you start. Every step below copies data; nothing deletes your old profile until you choose to remove it.
-- The beta install on your machine (if any) keeps working until you replace it. The new package upgrades it in place (Linux) or sits alongside until you uninstall the old one (Windows/macOS, unsigned builds).
+Close the Python app, then copy its profile directory somewhere safe.
 
-## 1. Back up your data
+| OS | Profile directory |
+| --- | --- |
+| Windows | `%APPDATA%\pomodoro-timer\` |
+| macOS | `~/.config/pomodoro-timer/` |
+| Linux | `~/.config/pomodoro-timer/` |
 
-Find your current profile and copy the whole directory somewhere safe (USB drive, cloud folder, or `/tmp/migration-backup`).
+The profile contains `todos.json` (tasks) and `history.json` (session history). The legacy app did not read `POMODORO_DATA_DIR`; its profile is in the default location above.
 
-| Stream | Windows | macOS | Linux |
-| --- | --- | --- | --- |
-| Legacy `0.3.1` | `%APPDATA%\pomodoro-timer\` | `~/.config/pomodoro-timer/` | `~/.config/pomodoro-timer/` |
-| Beta `0.1.0-beta.1` | `%APPDATA%\com.imranpollob.pomodoro-timer.beta\` | `~/Library/Application Support/com.imranpollob.pomodoro-timer.beta/` | `~/.local/share/com.imranpollob.pomodoro-timer.beta/` |
+## 2. Install Pomodoro Timer 1.0.0
 
-If you set a custom profile location, back that up instead:
+Download the Windows NSIS installer, macOS `.dmg`, or Linux `.deb` from the [v1.0.0 GitHub release](https://github.com/imranpollob/pomodoro-timer/releases/tag/v1.0.0). You can also build the app from source using the [development guide](docs/development.md).
 
-- Legacy and current releases both honor `POMODORO_DATA_DIR`. Note the meaning changed: under `0.3.1` it pointed at JSON files (`settings.json`, `todos.json`, `history.json`); under `1.0.0` it points at the SQLite profile directory. If you export this variable globally, update it to the new location (Section 4) or unset it to use the default.
-- Beta builds used `POMODORO_BETA_DATA_DIR`, which `1.0.0` ignores. Rename it to `POMODORO_DATA_DIR` if you rely on it.
+The new app uses different installer and binary names from the Python app, so installing it does not replace the old app. Launch `1.0.0` and confirm that the Timer page opens without save errors.
 
-Legacy contents worth keeping: `todos.json` (your task list) and `history.json` (your session history). Beta contents: `prototype.sqlite3` plus its `-wal`/`-shm` sidecars.
+## 3. Recreate your tasks
 
-## 2. Path A: legacy `0.3.1` → `1.0.0`
+Use the backed-up `todos.json` as a reference to add your tasks in the new app. The Python app's session history is not imported; keep `history.json` in your backup if you need to refer to it later.
 
-1. Close the legacy app and back up its profile (Section 1).
-2. Install `1.0.0` by following [development guide](docs/development.md) for your OS. The installers and binaries use different names from the legacy ones (`pomodoro-desktop` vs `pomodoro`), so installing does not overwrite the old app.
-3. Launch `1.0.0` once and confirm a fresh profile is created (Timer page loads, no save errors).
-4. Recreate your tasks in the Tasks page, using your backed-up `todos.json` as reference. Your legacy history stays in the backup as an archive; it is not imported.
-5. Optional: uninstall the legacy app once you are settled:
-   - Linux: `sudo apt-get remove pomodoro-timer` (leaves `~/.config/pomodoro-timer/` in place).
-   - Windows/macOS: remove via Add/Remove Programs / Applications as usual.
+You can uninstall the Python app after you have confirmed that the new app works:
 
-## 3. Path B: beta `0.1.0-beta.1` → `1.0.0`
+- Linux: `sudo apt-get remove pomodoro-timer` (the profile directory remains on disk).
+- Windows and macOS: remove it through the usual app management tools.
 
-The database schema is unchanged (v3), so your beta data carries over with a file copy. The profile directory changes because the app identifier dropped the `.beta` suffix.
-
-1. Close the beta app completely (tray → Exit/Quit, not just window close).
-2. Back up the beta profile directory (Section 1).
-3. Install `1.0.0`:
-   - Linux: the package name is still `pomodoro`, so installing upgrades in place: `sudo apt-get install --yes ./Pomodoro_1.0.0_amd64.deb`. The old `/usr/bin/pomodoro-desktop-beta` binary is replaced by `/usr/bin/pomodoro-desktop`.
-   - Windows/macOS: install the new package, then uninstall the old unsigned build at your convenience.
-4. Launch `1.0.0` once so it creates the new profile directory, then close it again. The new locations are:
-   - Windows: `%APPDATA%\com.imranpollob.pomodoro-timer\`
-   - macOS: `~/Library/Application Support/com.imranpollob.pomodoro-timer/`
-   - Linux: `~/.local/share/com.imranpollob.pomodoro-timer/`
-5. Copy the database files from the beta directory into the new directory, renaming them:
-
-   ```sh
-   # Linux/macOS example (adjust paths per the table above)
-   cp ~/.local/share/com.imranpollob.pomodoro-timer.beta/prototype.sqlite3* \
-      ~/.local/share/com.imranpollob.pomodoro-timer/
-   cd ~/.local/share/com.imranpollob.pomodoro-timer/
-   for ext in "" "-wal" "-shm"; do
-     [ -f "prototype.sqlite3$ext" ] && mv "prototype.sqlite3$ext" "pomodoro.sqlite3$ext"
-   done
-   ```
-
-   Copy all sidecar files that exist (`-wal`, `-shm`); skipping them can lose recent sessions. Settings, tasks, sessions, and checkpoints all live in this database, so one copy carries everything.
-6. If you used `POMODORO_BETA_DATA_DIR`, set `POMODORO_DATA_DIR` to the same directory (after renaming the files inside it) or unset it to use the new default.
-7. Launch `1.0.0` and verify (Section 5). The beta directory is left untouched — delete it only after verification.
-
-## 4. Default profile locations in `1.0.0`
+## Pomodoro Timer 1.0.0 profile locations
 
 | OS | Location |
 | --- | --- |
@@ -79,32 +41,28 @@ The database schema is unchanged (v3), so your beta data carries over with a fil
 | macOS | `~/Library/Application Support/com.imranpollob.pomodoro-timer/` |
 | Linux | `~/.local/share/com.imranpollob.pomodoro-timer/` |
 
-Override with `POMODORO_DATA_DIR` (must be set before launching). The profile holds `pomodoro.sqlite3` plus `-wal`/`-shm` sidecars; back up the whole directory with the app closed.
+Set `POMODORO_DATA_DIR` before launching to use a different profile directory. The profile contains `pomodoro.sqlite3` and may include `-wal` or `-shm` sidecar files. Close the app before backing up the directory.
 
-## 5. Verification checklist
+## Verification
 
-- [ ] App launches with no save errors or retry banners.
-- [ ] Tasks page shows your expected tasks (Path B: carried over; Path A: recreated).
-- [ ] Reports totals match what you expect (Path B: compare against the beta before deleting it).
-- [ ] Timer starts, pauses, resumes, and finishes one short session; the session appears in Reports.
-- [ ] Compact mode opens at the small strip size and closes without quitting the app.
-- [ ] Linux only: `dpkg -l pomodoro` shows `1.0.0`, and `which pomodoro-desktop` resolves.
+- [ ] The app launches without save errors or retry banners.
+- [ ] Your tasks have been recreated in the Tasks page.
+- [ ] The timer starts, pauses, resumes, and finishes a short session; the session appears in Reports.
+- [ ] Compact mode opens at the expected size and closes without quitting the app.
+- [ ] Linux only: `dpkg -l pomodoro` shows version `1.0.0`, and `which pomodoro-desktop` resolves.
 
-## 6. Rollback
+## Rollback
 
-- Path A: uninstall `1.0.0`, reinstall `0.3.1` from the [Releases page](../../releases) (tag `v0.3.1`), restore your profile backup, and relaunch. Your legacy data was never modified by `1.0.0`.
-- Path B: your beta directory is untouched (Section 3 copies, never moves). Reinstall the beta build, rename the files back if needed, and relaunch. Keep the backup from Section 1 until the new version has run cleanly for a few days.
+If you need to return to the Python app, uninstall `1.0.0`, reinstall [`v0.3.1`](https://github.com/imranpollob/pomodoro-timer/releases/tag/v0.3.1), and restore the profile backup. The new app does not modify the Python profile.
 
-## 7. Troubleshooting
+## Troubleshooting
 
-- **Empty Tasks/Reports after Path B:** the files were likely copied while the beta was still running (tray icon), so the `-wal` sidecar is inconsistent. Close both apps and copy again from the backup.
-- **`POMODORO_DATA_DIR` seems ignored:** it must be set before launching, and it must point at a directory, not the `.sqlite3` file itself.
-- **Two Pomodoro entries after upgrading (Linux):** you have both the legacy `pomodoro-timer` and the new `pomodoro` packages installed. Remove the legacy one (Section 2, step 5) if you no longer need it.
-- **Old beta binary still on PATH (Linux):** an upgrade from the beta `.deb` replaces `/usr/bin/pomodoro-desktop-beta` with `/usr/bin/pomodoro-desktop`. If the old path persists, the upgrade did not complete — reinstall.
-- **Notifications or sound missing:** delivery depends on OS settings (Windows Focus Assist/notification settings, Linux desktop notification settings). This is unchanged from the beta; see [README.md](README.md#current-app).
+- **`POMODORO_DATA_DIR` seems ignored:** set it before launching the app and point it to a directory, not to the `.sqlite3` file.
+- **Two Pomodoro entries after installing on Linux:** both the legacy `pomodoro-timer` and current `pomodoro` packages may be installed. Remove the legacy package if you no longer need it.
+- **Notifications or sound are missing:** delivery depends on OS settings, including Windows Focus Assist and notification settings, macOS notification settings, or Linux desktop notification settings. See [Version 1 behavior](docs/development.md#version-1-behavior).
 
 ## References
 
-- [development guide](docs/development.md) — install, run, and build instructions.
-- [Backlog](docs/implementation/backlog.md) — what is implemented, deferred, and still needs acceptance.
-- [Platform checklist](docs/implementation/platform-validation.md) — installed-app verification per OS.
+- [Development guide](docs/development.md) — install, run, and build instructions.
+- [Backlog](docs/implementation/backlog.md) — implemented features and remaining acceptance checks.
+- [Platform checklist](docs/implementation/platform-validation.md) — installed-app verification for each OS.

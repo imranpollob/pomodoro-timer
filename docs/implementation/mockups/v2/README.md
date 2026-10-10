@@ -7,7 +7,7 @@ Read the [UI design specification](../../ui-design-spec.md) for the surface inve
 These are generated design concepts, not implemented application screenshots. Some repeated previews and small labels may vary between boards. Follow the written specification when an image differs. Logical dimensions are targets at default text scale, not the physical size of the raster image.
 
 
-> **Scope note (October 5, 2026):** This gallery records broad visual exploration, not the active MVP contract. Use [the concise implementation plan](../../implementation-plan.md) and [MVP UI specification](../../ui-design-spec.md) for current scope. Project management, sync, migration, data import/export, custom themes, and other extended screens are deferred. The implemented Reports page uses rolling 7-day/30-day ranges and custom dates; CSV and Details actions from these concepts are intentionally omitted. Promotional headers and sidebar slogans are also omitted.
+> **Scope note (October 10, 2026):** This gallery records design concepts, not the released interface. Use the [v1 scope and acceptance plan](../../implementation-plan.md) and [v1 UI specification](../../ui-design-spec.md) for current behavior. Project management, sync, automatic data import, export, custom themes, and other extended screens are outside v1.0.0. Reports uses rolling 7-day/30-day ranges and custom dates; CSV export, Details actions, promotional headers, and sidebar slogans shown in some concepts are not in the release.
 
 ## Board index
 
@@ -148,7 +148,7 @@ Shared Windows/macOS/Linux functionality, platform chrome, visible keyboard focu
 
 ## 15 — Later releases: breaks, goals, theme import
 
-Later-release concepts only: fullscreen break overlay, scheduled breaks, goals/reminders, and custom theme import. These do not expand first-stable-release scope.
+Later-release concepts only: fullscreen break overlay, scheduled breaks, goals/reminders, and custom theme import. These do not expand v1.0.0 scope.
 
 ![Later releases: breaks, goals, theme import](15-follow-up-windows.png)
 

@@ -2,9 +2,9 @@
 
 ## Product & Scope
 
-Pomodoro Timer v1: **Tauri 2, Rust, Svelte/TypeScript, SQLite** on Windows, macOS, and Linux. Follow the MVP scope in `docs/implementation/backlog.md` and the UI specification; record evidence in `implementation-log.md`. The legacy Python app was removed in October 2026 (recoverable from git history); no legacy import exists. Pin toolchains and lock dependencies; the user owns commits and pushes.
+Pomodoro Timer 1.0.0: **Tauri 2, Rust, Svelte/TypeScript, SQLite** on Windows, macOS, and Linux. Follow the v1 scope in `docs/implementation/backlog.md` and the UI specification; record evidence in `docs/implementation/implementation-log.md`. The legacy Python app was removed in October 2026 (recoverable from git history); no legacy import exists. Pin toolchains and lock dependencies; the user owns commits and pushes.
 
-App identity is `com.imranpollob.pomodoro-timer` (version 1.0.0); profiles live in Tauri's app-data directory for that identifier unless `POMODORO_DATA_DIR` overrides it. Keep one backend timer authority with injected clocks, session snapshots, sleep/wake handling, and transactional persistence. Tasks are assigned before a session starts and saved with its title. UI/tray/shortcuts share commands/state. Compact countdown targets **200 × 44 logical pixels**: time, phase indicator, one play/pause button. Close, pin, finish, and exit actions belong in the accessible context menu; closing compact must not quit the app or reopen main.
+App identity is `com.imranpollob.pomodoro-timer` (version 1.0.0); profiles live in Tauri's app-data directory for that identifier unless `POMODORO_DATA_DIR` overrides it. Keep one backend timer authority with injected clocks, session snapshots, and transactional persistence. Windows pauses on native suspend/lock events; macOS and Linux do not have native suspend adapters in v1.0.0. Tasks are assigned before a session starts and saved with its title. Main, compact, and tray controls share commands and state. Compact countdown targets **200 × 44 logical pixels** with time and one play/pause control. Its accessible context menu contains Close compact, Open main, Pin, and Sound. Closing compact must not quit the app or reopen main.
 
 ## Project Structure
 
@@ -29,7 +29,7 @@ Use rustfmt and two-space TypeScript/Svelte indentation. Rust functions use `sna
 
 Use Rust unit tests, Vitest `*.test.ts`, and Playwright `*.spec.ts`. Inject clocks/failures and isolate profiles via `POMODORO_DATA_DIR`. Never distribute the `smoke-test` feature.
 
-Use `platform-validation.md` for installed-build checks on all three OSs, including the user's Mac/Linux. Record revision, OS, architecture, desktop session and results. CI/WSL/browser fixtures do not establish physical desktop acceptance.
+Use `platform-validation.md` for installed-build checks on all three OSs. Record revision, OS, architecture, desktop session and results. CI/WSL/browser fixtures do not establish physical desktop acceptance.
 
 ## Commit & Pull Request Guidelines
 

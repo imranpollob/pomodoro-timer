@@ -1,6 +1,6 @@
 # Mockup inspection notes — revision 2
 
-These notes distinguish visual concept coverage from implementable behavior. The [UI specification](../../ui-design-spec.md) is authoritative.
+These are historical design-review notes. They distinguish concept coverage from behavior; the [v1 UI specification](../../ui-design-spec.md) is authoritative for the released app.
 
 ## Review outcomes
 
@@ -10,9 +10,9 @@ These notes distinguish visual concept coverage from implementable behavior. The
 - Existing Python top-level windows/message boxes were checked against the coverage inventory. A seventeenth board adds the daily mode breakdown and Reset Today's Stats confirmation/outcomes.
 - An eighteenth board explicitly pictures completion, unsaved drafts, disconnect, and credential expiry rather than relying on descriptions beside the larger screens.
 - Ordinary main-window previews repeated inside some boards are illustrative. They do not add extra product destinations, standalone windows, or controls.
-- First-stable-release boards and later-release concepts are separated. No generated image authorizes a feature expansion or marks an implementation task complete.
+- v1 concepts and later-release ideas are separated. These images do not add features to the release or mark implementation work complete.
 
-## Differences to resolve in the component prototype
+## Design concepts and implementation rules
 
 | Area | Written implementation rule |
 | --- | --- |
@@ -39,7 +39,7 @@ These notes distinguish visual concept coverage from implementable behavior. The
 
 The compact button, context-menu discovery, all settings categories, recovery paths, report/task dialogs, and three-platform layout concepts are the key visual-review checkpoints. All 18 selected PNGs passed signature/chunk-CRC/decompression/scanline validation, and all 48 local document references present during the validation pass resolved. The inventory contains 74 uniquely identified surfaces/states. Results, dimensions, and SHA-256 hashes are recorded in `asset-validation.json`. These checks verify the design artifacts, not application behavior.
 
-## Remaining design validation
+## What images cannot verify
 
-Static raster images cannot verify tab order, modal focus restoration, assistive-technology names, 200% text behavior, compositor placement, shortcut permissions, or update safety. These remain explicit M1/M5 prototype and packaged-build gates. UI code must not copy fabricated sample data, duplicate sidebars, or extra controls from an incidental preview.
+Static images cannot verify tab order, modal focus restoration, assistive-technology names, 200% text behavior, compositor placement, or update safety. Verify these in the running app and installed packages. UI code must not copy sample data, duplicate sidebars, or extra controls from incidental previews.
 

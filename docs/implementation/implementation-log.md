@@ -1,5 +1,7 @@
 # Implementation log
 
+This is a dated history of development and verification, not a statement of current status. Pomodoro Timer 1.0.0 is released; use the [README](../../README.md), [backlog](backlog.md), and [platform validation record](platform-validation.md) for current information.
+
 ## October 4, 2026 — First stabilization batch
 
 B01–B03 and the implementation portion of B04 are complete in the existing Python application. This is the reliable baseline for the planned rebuild; no Tauri workspace or revision-2 UI has been implemented yet. Windows, macOS, and Linux remain mandatory. M0 is open until all three CI jobs and the performance baseline pass.
@@ -75,12 +77,12 @@ The user confirms that the Windows/macOS/Linux legacy CI now passes and requests
 
 ### Delivered prototype
 
-M1.1 is implemented in the separate [`desktop/`](../../desktop/README.md) workspace. Node 24.19.0/npm 11.17.0 and Rust 1.99.0 are pinned; both dependency lockfiles are included. The legacy application, tests and release workflows remain available.
+M1.1 was implemented in the separate `desktop/` workspace. Node 24.19.0/npm 11.17.0 and Rust 1.99.0 were pinned; both dependency lockfiles were included. The legacy application, tests and release workflows were still available at that point.
 
 - The Rust `focus-core` crate owns injected-clock timing, frozen session configuration, Pomodoro cycles, stopwatch, finish/skip outcomes and paused recovery. One serialized service handles commands from all windows/tray, revisions, one-second presentation updates and 15-second checkpoints.
 - SQLite transactions persist a session and checkpoint together; duplicate record IDs are idempotent. Failed transactions freeze active duration and block replacement until retry succeeds. Malformed checkpoints are rejected instead of silently overwritten. Forced termination can lose active time since the latest checkpoint.
 - Svelte views provide the main timer, a 200 × 44 compact countdown with one visible action, recent sessions, timer preferences, finish confirmation, and connection/save/recovery feedback. Compact supports Space, time-region Enter/double-click, drag and a keyboard-accessible native context menu with checked pin/sound items. Main remains reachable when the tray is unavailable.
-- Native integration includes single-instance activation, tray actions, notification testing and close/OS-quit checkpointing. Beta identity and `POMODORO_BETA_DATA_DIR` keep the prototype isolated from legacy profiles. There is no legacy import or remote sync in this batch.
+- Native integration includes single-instance activation, tray actions, notification testing and close/OS-quit checkpointing. The interim app identity and `POMODORO_BETA_DATA_DIR` kept the prototype isolated from legacy profiles. There is no legacy import or remote sync in this batch.
 - `.github/workflows/desktop.yml` checks frontend/Rust code and builds unsigned normal `.deb`, NSIS and `.dmg` prototypes. A separate, nondistributed `smoke-test` executable checks both native webviews' regular IPC and SQLite read-back; the test driver is absent from normal builds.
 
 ### Verification
@@ -109,7 +111,7 @@ The user could not run the prototype on the current Windows machine. `npm run ta
 
 Installed Rustup through the official winget package and selected Rust 1.99.0 with rustfmt/Clippy. Native `cargo --version` and `rustc --version` now succeed. `cargo test --locked -p focus-core` reaches compilation but fails with **`link.exe not found`**, confirming the remaining C++ prerequisite. The C++ workload installer returned **1602 (cancellation)** while requesting administrator access; the workload was not installed. No native Windows build or launch success is claimed.
 
-The [desktop README](../../desktop/README.md#windows-first-time-setup) now supplies explicit Windows installation commands, administrator/PATH restart instructions, and explanations for missing Cargo/linker errors. Complete the C++ workload installation, restart the IDE/terminal, then rerun the native build and launch checks. The prototype and legacy data were not modified by these checks.
+The [development guide](../../docs/development.md#windows-first-time-setup) now supplies explicit Windows installation commands, administrator/PATH restart instructions, and explanations for missing Cargo/linker errors. Complete the C++ workload installation, restart the IDE/terminal, then rerun the native build and launch checks. The prototype and legacy data were not modified by these checks.
 
 ## October 5, 2026 — Windows integration and installed-build validation
 
@@ -143,9 +145,9 @@ Environment: Windows 11 Home 10.0.26300 x64; 120 DPI (125%); Rust 1.99.0, Node 2
 
 The user missed the audio/notification test; hearing and receipt remain unconfirmed. Real suspend/wake and lock/unlock, Narrator, tray visibility, monitor removal and other display scales require manual Windows checks. The separate native smoke simulates OS messages; it does not suspend or lock the user's machine. Its successful exit logged a WebView2 class-unregistration warning (1412), with no failing assertion or record discrepancy.
 
-`desktop/scripts/windows_ui_smoke.py` drives normal artifacts through UI Automation and uses disposable SQLite data. `windows_install_smoke.ps1` refuses to replace an existing beta installation, verifies a workspace-contained target and retains app data during silent uninstall. CI now exercises the installed normal Windows artifact separately from the nondistributed smoke-feature executable. Remote results for this updated workflow are pending.
+`desktop/scripts/windows_ui_smoke.py` drives normal artifacts through UI Automation and uses disposable SQLite data. `windows_install_smoke.ps1` refuses to replace an existing interim Tauri installation, verifies a workspace-contained target and retains app data during silent uninstall. CI now exercises the installed normal Windows artifact separately from the nondistributed smoke-feature executable. Remote results for this updated workflow are pending.
 
-See [ADR 0002](architecture/0002-windows-integrations.md), the [Windows platform record](platform-validation.md), [machine-readable evidence](windows-validation-2026-10-05.json), and updated [desktop instructions](../../desktop/README.md). The unsigned installer is under `desktop/target/release/bundle/nsis/`; generated binaries, test environments and reports remain ignored. No release, signing, remote sync conversion or legacy-data migration was performed.
+See [ADR 0002](architecture/0002-windows-integrations.md), the [Windows platform record](platform-validation.md), [machine-readable evidence](windows-validation-2026-10-05.json), and the [development guide](../../docs/development.md). At the time, the unsigned installer was under `desktop/target/release/bundle/nsis/`; generated binaries, test environments and reports remain ignored. No release, signing, remote sync conversion or legacy-data migration was performed.
 
 ## October 5, 2026 — MVP task flow, daily summary, and compact close
 
@@ -173,11 +175,11 @@ Removed the promotional page header from Tasks, Sessions, Reports, and Settings.
 - Reports query all saved sessions in a selected local-date range (separate from the 20-row recent-session preview), provide week/month presets, custom dates, aggregate and per-day focus summaries, session details, and CSV download.
 - The optional auto-start preference starts the next focus/break phase only after automatic natural completion. Manual finish/skip and stopwatch do not auto-start. The finished record and next active checkpoint are saved atomically.
 - Desktop preferences now include dark/light, main-window scale, reduced motion, and opacity settings. Compact text scaling remains independent. Native transparency and color appearance still require installed Windows, macOS, and Linux checks.
-- Added `desktop/scripts/seed_demo_profile.py`; it idempotently adds 4 tasks and 57 synthetic sessions across the last 28 local calendar days to the selected beta profile, preserving existing settings and records. The current Windows beta profile increased from 2 to 6 tasks and from 8 to 65 sessions. Samples cover focus, short/long breaks, stopwatch, completed, skipped, and interrupted outcomes.
+- Added `desktop/scripts/seed_demo_profile.py`; it idempotently adds 4 tasks and 57 synthetic sessions across the last 28 local calendar days to the selected preview profile, preserving existing settings and records. The current Windows preview profile increased from 2 to 6 tasks and from 8 to 65 sessions. Samples cover focus, short/long breaks, stopwatch, completed, skipped, and interrupted outcomes.
 
 ### Verification
 
-`npm run build` passed with 0 Svelte errors/warnings. Playwright passed 8/8 UI checks, including subpage header removal, report detail/CSV download, and persisted appearance preferences. Vitest passed 6/6; Rust core passed 20/20, including date-range queries beyond the latest-20 limit, old-settings compatibility, and manual-versus-automatic completion; native Rust tests passed 4/4; rustfmt and workspace Clippy passed. The demo seeder added 61 rows (4 tasks and 57 sessions) to the existing Windows beta profile, then added 0 rows on a second run. Browser fixture tests do not establish native CSV delivery or native transparency/color output; restart the app to review its seeded Windows profile. macOS/Linux acceptance remains pending until those platforms are available.
+`npm run build` passed with 0 Svelte errors/warnings. Playwright passed 8/8 UI checks, including subpage header removal, report detail/CSV download, and persisted appearance preferences. Vitest passed 6/6; Rust core passed 20/20, including date-range queries beyond the latest-20 limit, old-settings compatibility, and manual-versus-automatic completion; native Rust tests passed 4/4; rustfmt and workspace Clippy passed. The demo seeder added 61 rows (4 tasks and 57 sessions) to the existing Windows preview profile, then added 0 rows on a second run. Browser fixture tests do not establish native CSV delivery or native transparency/color output; restart the app to review its seeded Windows profile. macOS/Linux acceptance remains pending until those platforms are available.
 
 ## October 5, 2026 — Simplified pages and consistent typography
 
@@ -185,7 +187,7 @@ Removed the promotional page header from Tasks, Sessions, Reports, and Settings.
 - Replaced calendar-week/month presets with **Last 7 days** and **Last 30 days**, including today and the preceding 6/29 local dates. Custom date ranges remain inclusive.
 - Removed the timer's promotional heading and sidebar badge/slogans. Compact mode is available once in the sidebar on every page; navigation resets page scroll and the sidebar stays accessible during long-page scrolling.
 - Standardized main-window text: 16 px body/labels/controls/table text, 20 px section titles, 14 px hints, and 32 px summary metrics. Shortened repeated explanatory text, checked both themes, and improved light-theme borders/completed-task contrast. Compact keeps its independent typography and geometry.
-- Extended the seeder to two calendar months: August 6–October 5 for this run. Added 66 sample sessions to the existing Windows beta profile, bringing the generated demo set to 123 sessions. A repeated seed added zero rows.
+- Extended the seeder to two calendar months: August 6–October 5 for this run. Added 66 sample sessions to the existing Windows preview profile, bringing the generated demo set to 123 sessions. A repeated seed added zero rows.
 
 Validation: production frontend build passed with zero Svelte errors/warnings; all 9 Playwright checks passed. Following final layout/contrast adjustments, the build and the page/theme review check passed again. Reviewed rendered Timer, Tasks, Reports, and Settings in dark/light themes; verified no page-wide overflow at 660 × 520 and retained compact sizing checks. Updated current documentation and browser-fixture screenshots. Native platform appearance remains a separate acceptance check.
 
@@ -315,11 +317,17 @@ The October 8 Linux commit (`53a3be2`) shipped `DIAG2`/`DIAG_PUBLISH` stderr sca
 
 Validation (Linux Mint 22.3, x86_64, Cinnamon X11; Rust 1.99.0, Node 24.19.0): rustfmt clean; focus-core 22/22; desktop lib 8/8; workspace Clippy and smoke-feature Clippy clean with -D warnings; native smoke 3/3 green via the CI-exact `dbus-run-session -- xvfb-run` invocation with 15-16 samples each at 200x44; release `.deb` rebuilt from the cleaned tree with fixed t64 Depends, launches to a mapped 960x680 main window with SQLite init and EGL-only stderr. Frontend suites were green on this tree and untouched by this change. Installed-app tray/audio/notification/suspend/accessibility acceptance still needs the user's real-session checks.
 
-## October 10, 2026 - v1 removed; Tauri app promoted to root as the v1 product
+## October 10, 2026 — Legacy Python app removed; Tauri v1.0.0 promoted to root
 
 Per user request, the legacy Python/Tk codebase is deleted (source, pytest suite, smoke scripts, PyInstaller spec, platform packaging, legacy CI/release workflows, sample config; recoverable from git history) and `desktop/*` moved to the repository root with history preserved via renames. The single remaining workflow is `.github/workflows/ci.yml` (renamed from `desktop.yml`, root-relative paths, `pomodoro-` artifact names). The user's `.vscode/settings.json` was untracked but left on disk.
 
-The app graduates from the beta identity: `com.imranpollob.pomodoro-timer`, crate/binary `pomodoro-desktop`, version `1.0.0`, `POMODORO_DATA_DIR` (reclaimed; the beta variable is ignored), `pomodoro.sqlite3`, and `PomodoroPowerEvents` for the Windows listener class. The new identifier yields a fresh default profile directory, so beta profiles are stranded until manually copied; `MIGRATION.md` documents the `0.3.1` and `0.1.0-beta.1` → `1.0.0` paths with pinned versions, backup/verification/rollback steps, and the `POMODORO_DATA_DIR` meaning change. Both lockfiles were hand-edited for the rename only (no dependency drift) and verified with `--locked` runs. Historical log entries, ADRs (plus a supersession note on 0001), research, and validation JSON were left as records; living docs (README, AGENTS.md, backlog, plan, platform checklist) now describe the root layout and production identity.
+The app moves from its interim identity to the v1 identity: `com.imranpollob.pomodoro-timer`, crate/binary `pomodoro-desktop`, version `1.0.0`, `POMODORO_DATA_DIR` (the old Tauri variable is ignored), `pomodoro.sqlite3`, and `PomodoroPowerEvents` for the Windows listener class. The new identifier yields a fresh default profile directory, so pre-v1 Tauri profiles require a manual copy; `MIGRATION.md` documents the `0.3.1` and `0.1.0-beta.1` → `1.0.0` paths with pinned versions, backup/verification/rollback steps, and the legacy and pre-v1 Tauri environment variables. Both lockfiles were hand-edited for the rename only (no dependency drift) and verified with `--locked` runs. Historical logs, ADRs, research, and validation JSON remain as records; living docs (README, AGENTS.md, backlog, plan, platform checklist) describe the root layout and production identity.
 
 Validation (Linux Mint 22.3, x86_64, Cinnamon X11): `npm ci` plus svelte-check 0/0, production build, Vitest 6/6, Playwright 23/23; focus-core 22/22; `pomodoro-desktop` lib 8/8; rustfmt clean; workspace and smoke-feature Clippy clean with `-D warnings`; native smoke 2/2 green (16 samples each at 200x44); release `Pomodoro_1.0.0_amd64.deb` built with fixed t64 Depends (`pomodoro` 1.0.0, `/usr/bin/pomodoro-desktop`) and launch-verified (960x680 main window, `pomodoro.sqlite3` init, no debug output). The installed `0.1.0-beta.1` package upgrades cleanly since the Debian package name is unchanged. Installed-app tray/audio/notification/suspend/accessibility acceptance still needs real-session checks.
+
+## October 10, 2026 — macOS ARM64 validation
+
+On revision `88fe017`, macOS 27.0.1 / Apple M1 ARM64: `npm ci`, production frontend build, Vitest 6/6, Playwright 23/23, focus-core 22/22, desktop library tests 8/8, rustfmt, workspace Clippy, and native webview/IPC smoke passed using the pinned Node/Rust toolchains and a temporary smoke profile. The release `.app` compiled. Local DMG assembly stopped in the Finder-formatting AppleScript and was terminated; its temporary disk image was ejected. The [GitHub Actions run for this revision](https://github.com/imranpollob/pomodoro-timer/actions/runs/38049312107) passed all three OS jobs and produced an ARM64 DMG artifact.
+
+No installed-app acceptance is claimed from this run. Live menu-bar/Dock behavior, VoiceOver, received audio/notifications, physical sleep/wake, and the installed journey remain open. Full environment and command details are in the [platform validation record](platform-validation.md).
 

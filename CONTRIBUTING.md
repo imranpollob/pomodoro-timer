@@ -8,7 +8,7 @@ Follow the [development guide](docs/development.md), then run `npm ci`.
 
 ## Before opening a pull request
 
-Run the same checks as CI from the repo root:
+Run the checks below from the repository root before opening a pull request:
 
 ```sh
 npm run build && npm test && npm run test:ui
@@ -18,7 +18,7 @@ cargo test --locked -p pomodoro-desktop --lib
 cargo clippy --locked --workspace --all-targets -- -D warnings
 ```
 
-CI runs on Linux, Windows and macOS. Code that is only used on one platform must be gated with `#[cfg]` so the other platforms stay warning-free under `-D warnings`.
+The CI matrix builds and validates Linux, Windows and macOS packages when a version tag is pushed or a maintainer starts a manual run. It does not run for branch pushes or pull requests. Code used on only one platform must be gated with `#[cfg]` so the other platforms stay warning-free under `-D warnings`.
 
 ## Guidelines
 

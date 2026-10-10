@@ -1,6 +1,6 @@
-# MVP UI specification
+# Pomodoro Timer v1 UI specification
 
-Updated October 5, 2026. This document defines the current MVP interface. The full [mockup gallery](mockups/v2/README.md) also contains future concepts; those concepts do not add features to MVP. Windows is the current implementation target; Windows, macOS, and Linux remain mandatory.
+Updated October 10, 2026. This document describes the v1.0.0 interface. The [mockup gallery](mockups/v2/README.md) includes concepts outside the released scope; this specification defines the shipped behavior. The app builds for Windows, macOS, and Linux. Native platform verification is tracked in [platform-validation.md](platform-validation.md).
 
 ## Main window
 
@@ -27,7 +27,7 @@ Reports is the only session-history page. Reports opens on Today; the preset mat
 
 ### Settings
 
-Keep MVP settings in the main window: timer durations/cycle, completion sound, sound volume, pinning, notifications on by default, and close-to-tray. Settings save automatically shortly after each edit; invalid timer values are skipped. Explain that notification delivery also depends on OS settings. Include light/dark, compact-mode opacity, and optional automatic focus/break transitions.
+Keep v1 settings in the main window: timer durations/cycle, completion sound, sound volume, pinning, notifications on by default, and close-to-tray. Settings save automatically shortly after each edit; invalid timer values are skipped. Explain that notification delivery also depends on OS settings. Include light/dark, compact-mode opacity, and optional automatic focus/break transitions.
 
 ## Typography and layout
 
@@ -49,6 +49,6 @@ Main, compact, and tray send commands to the same Rust timer service. The render
 
 Use labels and keyboard focus that work without color alone. Do not announce each timer tick to screen readers; announce deliberate actions and phase changes. On desktops without a tray, keep a normal reopen path. Native sleep, notification, audio, geometry, and accessibility behavior must be verified per OS.
 
-## Deferred design concepts
+## Outside v1.0.0
 
-Projects, sync/conflicts, legacy import, backup/import/export windows, reset-today, custom themes, goals/reminders, overlays, updates, and diagnostic export remain future concepts in the gallery. They are not MVP acceptance criteria.
+Projects, sync/conflicts, automatic legacy import, backup/export windows, reset-today, custom themes, goals/reminders, overlays, updates, and diagnostic export remain future concepts in the gallery. They are not part of v1.0.0.

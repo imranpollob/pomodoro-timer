@@ -2,22 +2,22 @@
 
 [![CI](https://github.com/imranpollob/pomodoro-timer/actions/workflows/ci.yml/badge.svg)](https://github.com/imranpollob/pomodoro-timer/actions/workflows/ci.yml)
 
-A focus timer for Windows, macOS and Linux, built with Tauri 2, Rust, Svelte/TypeScript and SQLite. Your data stays on your machine in a local SQLite profile.
+Pomodoro Timer 1.0.0 is a focus timer for Windows, macOS and Linux, built with Tauri 2, Rust, Svelte/TypeScript and SQLite. Sessions, tasks and settings are stored in a local profile.
 
 ![Main timer](docs/implementation/prototype-screenshots/main-timer.png)
 
 ## Features
 
 - Pomodoro, short/long breaks and stopwatch, with precise pause/resume and explicit finish confirmation.
-- A 200 × 44 compact countdown strip with one play/pause button and an accessible context menu.
+- A 200 × 44 compact countdown strip with one play/pause button and a keyboard-accessible menu for other actions.
 - Tasks that you assign before a session starts; the title is saved with the session.
 - Reports for today, the last 7/30 days and custom date ranges.
 - System tray (Windows/Linux) or menu bar (macOS), native notifications and audio, light/dark theme.
-- Sleep/lock handling, transactional persistence and crash-safe checkpoints from a single Rust timer authority.
+- Windows lock/suspend pause handling, transactional SQLite storage, and regular checkpoints managed by one Rust timer service.
 
 ## Install
 
-Pre-built packages are **unsigned** CI artifacts (`.deb`, NSIS installer, `.dmg`) and no release has been published yet. Download them from the latest [CI run](https://github.com/imranpollob/pomodoro-timer/actions/workflows/ci.yml), or build from source below. Coming from the legacy Python app or a beta build? See [MIGRATION.md](MIGRATION.md).
+Download the unsigned NSIS installer for Windows, `.dmg` for macOS, or `.deb` for Linux from the [v1.0.0 GitHub release](https://github.com/imranpollob/pomodoro-timer/releases/tag/v1.0.0). The earlier Python app is available as [`v0.3.1`](https://github.com/imranpollob/pomodoro-timer/releases/tag/v0.3.1). See the [platform record](docs/implementation/platform-validation.md) for verified behavior and outstanding checks. Coming from the Python app? See [MIGRATION.md](MIGRATION.md).
 
 ## Build from source
 
@@ -26,10 +26,10 @@ Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), Ru
 ```sh
 npm ci
 npm run tauri -- dev      # run the app
-npm run tauri -- build    # produce a package
+npm run tauri -- build -- --locked  # build for the current operating system
 ```
 
-Platform-specific setup, packaging, test commands and demo data are in the [development guide](docs/development.md).
+The build command packages for the current operating system; it does not create Windows, macOS and Linux packages together. See the [development guide](docs/development.md#local-packages) for local `.dmg`, `.exe` and `.deb` instructions.
 
 ## Data and privacy
 
