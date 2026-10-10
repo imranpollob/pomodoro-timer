@@ -106,6 +106,7 @@ The **Validate Pomodoro** workflow runs when a `v*` version tag is pushed or whe
 
 ```sh
 git tag v1.0.1
+# git tag -a v1.0.1 -m "Pomodoro Timer v1.0.1"
 git push origin v1.0.1
 ```
 
