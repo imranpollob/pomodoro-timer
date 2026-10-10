@@ -306,3 +306,12 @@ Validation: svelte-check 0/0, production build clean, glyph visually confirmed v
 
 Validation: svelte-check 0/0, Vitest 6/6, production build clean. Full UI suite executed headless against the production build through a /tmp route-interception harness (no dev server): 22/22, plus a throwaway probe proving the remove-task dialog shows the task title and Cancel keeps the row. The user just needs to reload dev (frontend-only change; no backend rebuild needed) and confirm the dialogs appear on Windows.
 
+## October 10, 2026 - Linux cleanup: debug logging, format gate, smoke sampler race
+
+The October 8 Linux commit (`53a3be2`) shipped `DIAG2`/`DIAG_PUBLISH` stderr scaffolding in normal-build paths (service commands/saves, snapshot/timer/resize/menu commands, and a per-publish counter), which also broke `cargo fmt --check`. Its new xwininfo geometry assertion in `native_smoke.py` failed with "Compact window never mapped": the whole probe runs in ~1.5 s on a fast machine, so 0.2 s external polling misses the transient compact-open window. A freeze-frame capture at process exit proved the app itself maps the strip at exactly 200 x 44 IsViewable, so the failure was harness-only.
+
+- Removed all DIAG logging and restored the original command/save/publish expressions; `cargo fmt --all --check` passes and the release binary contains zero DIAG strings.
+- De-flaked the sampler with a hold-open handshake: `native_smoke.py` sets `POMODORO_SMOKE_HOLD_OPEN` on Linux when xwininfo exists, and the smoke-only probe sleeps 3 s before exiting so the strip stays mapped for sampling. No behavior change on other platforms or without xwininfo.
+
+Validation (Linux Mint 22.3, x86_64, Cinnamon X11; Rust 1.99.0, Node 24.19.0): rustfmt clean; focus-core 22/22; desktop lib 8/8; workspace Clippy and smoke-feature Clippy clean with -D warnings; native smoke 3/3 green via the CI-exact `dbus-run-session -- xvfb-run` invocation with 15-16 samples each at 200x44; release `.deb` rebuilt from the cleaned tree with fixed t64 Depends, launches to a mapped 960x680 main window with SQLite init and EGL-only stderr. Frontend suites were green on this tree and untouched by this change. Installed-app tray/audio/notification/suspend/accessibility acceptance still needs the user's real-session checks.
+

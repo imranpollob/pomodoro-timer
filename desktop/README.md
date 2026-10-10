@@ -121,6 +121,33 @@ The installer probe refuses to replace an existing beta installation, verifies i
 
 Sound and notification delivery require manual confirmation on the installed app; API success does not confirm hearing or receipt, and desktop permission APIs do not establish Windows Focus Assist or notification-center delivery.
 
+### Linux packages and normal-build checks
+
+Install the native prerequisites (same set as CI):
+
+```sh
+sudo apt-get update
+sudo apt-get install --yes build-essential libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libasound2-dev xvfb dbus-x11 x11-utils
+```
+
+From `desktop/`, build the package, repair its dependencies, and install:
+
+```sh
+npm run tauri -- build --ci --bundles deb -- --locked
+sh scripts/fix_deb_depends.sh target/release/bundle/deb/*.deb
+sudo apt-get install --yes ./target/release/bundle/deb/*.deb
+```
+
+`fix_deb_depends.sh` rewrites the bundler's `libgtk-3-0` dependency into a `libgtk-3-0t64 | libgtk-3-0` alternate and adds the ALSA runtime the audio backend needs. The unpatched package refuses to install on Ubuntu 24.04+, Linux Mint 22+, and Debian 13+; the script is idempotent and leaves the data archive untouched. The `N: Download is performed unsandboxed ... _apt` notice during install is harmless; confirm with `dpkg -l pomodoro`.
+
+Launch the installed app with an isolated profile for acceptance checks:
+
+```sh
+POMODORO_BETA_DATA_DIR=/tmp/pomodoro-beta-test pomodoro-desktop-beta
+```
+
+`sudo apt-get remove pomodoro` removes the package but leaves per-user beta profile data in place.
+
 ## Architecture and next gates
 
 `crates/focus-core` owns the clock-injected domain, service and SQLite access, without Tauri dependencies. `src-tauri` supplies windows, events, tray, notifications and process lifecycle. `src` contains presentation and typed IPC consumers.

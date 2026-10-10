@@ -143,6 +143,11 @@ fn probe(app: &tauri::AppHandle) -> Result<(), String> {
     )?;
     dispatch_menu(app, "sound");
     app.state::<audio::AudioService>().play(0)?;
+    if std::env::var_os("POMODORO_SMOKE_HOLD_OPEN").is_some() {
+        // Hold the mapped windows briefly so the external Linux geometry
+        // sampler observes the compact strip instead of racing its exit.
+        thread::sleep(Duration::from_secs(3));
+    }
     Ok(())
 }
 

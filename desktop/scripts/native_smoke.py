@@ -38,6 +38,10 @@ def main():
         environment = os.environ.copy()
         environment["POMODORO_BETA_DATA_DIR"] = str(Path(folder) / "profile")
         environment["POMODORO_NATIVE_SMOKE_REPORT"] = str(report)
+        if sys.platform == "linux" and shutil.which("xwininfo") is not None:
+            # Ask the probe to hold its windows mapped so the sampler below
+            # observes the compact strip instead of racing its exit.
+            environment["POMODORO_SMOKE_HOLD_OPEN"] = "1"
         options = {}
         if os.name == "nt":
             startup = subprocess.STARTUPINFO()
