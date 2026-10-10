@@ -12,7 +12,7 @@ Pomodoro Timer 1.0.0 is a focus timer for Windows, macOS and Linux, built with T
 - A 200 × 44 compact countdown strip with one play/pause button and a keyboard-accessible menu for other actions.
 - Tasks that you assign before a session starts; the title is saved with the session.
 - Reports for today, the last 7/30 days and custom date ranges.
-- System tray (Windows/Linux) or menu bar (macOS), native notifications and audio, light/dark theme.
+- System tray (Windows/Linux) or menu bar (macOS, showing the running time), native notifications and audio, light/dark theme.
 - Windows lock/suspend pause handling, transactional SQLite storage, and regular checkpoints managed by one Rust timer service.
 
 ## Install

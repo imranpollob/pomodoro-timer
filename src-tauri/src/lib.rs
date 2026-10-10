@@ -13,6 +13,8 @@ use tauri_plugin_notification::NotificationExt;
 mod audio;
 mod controls;
 mod geometry;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod menubar;
 #[cfg(windows)]
 mod power;
 use controls::{Controls, DesktopState, Preferences};
@@ -410,6 +412,8 @@ pub fn run() {
                 Arc::new(SystemClock::default()),
                 move |snapshot| {
                     let _ = publish.emit("timer-state", &snapshot);
+                    #[cfg(target_os = "macos")]
+                    menubar::sync(&publish, &snapshot);
                     if snapshot.pending_save {
                         let _ = show_main(&publish);
                     }
@@ -489,10 +493,18 @@ pub fn run() {
                 .icon(app.default_window_icon().ok_or("Missing app icon")?.clone())
                 .build(app);
             #[cfg(target_os = "macos")]
-            controls::apply_macos_presence(
-                app.handle(),
-                &app.state::<Controls>().snapshot().preferences,
-            );
+            {
+                controls::apply_macos_presence(
+                    app.handle(),
+                    &app.state::<Controls>().snapshot().preferences,
+                );
+                // Managed after the tray exists so no label is recorded without being shown; the
+                // first sync covers a session restored at startup.
+                app.manage(menubar::MenuBarTime::default());
+                if let Ok(snapshot) = app.state::<TimerService>().snapshot() {
+                    menubar::sync(app.handle(), &snapshot);
+                }
+            }
             #[cfg(feature = "smoke-test")]
             smoke::start(app.handle().clone());
             Ok(())

@@ -9,6 +9,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Pomodoro and stopwatch timers, task-linked sessions, date-range reports, compact mode, and desktop preferences.
 
 ### Changed
+- On macOS the menu bar item shows the running pomodoro or stopwatch time (with a pause sign or Break label) instead of the app icon, and returns to the icon when idle.
 - Replaced the legacy Python app with a Tauri 2 / Rust / Svelte desktop app. See [MIGRATION.md](MIGRATION.md) for data migration steps.
 
 ### Fixed
