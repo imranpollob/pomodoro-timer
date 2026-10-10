@@ -12,7 +12,7 @@ App identity is `com.imranpollob.pomodoro-timer` (version 1.0.0); profiles live 
 
 ## Build, Test, and Development Commands
 
-From the repo root, install native prerequisites per the README:
+From the repo root, install native prerequisites per `docs/development.md`:
 
 - `npm ci`; `npm run tauri -- dev`: install/start.
 - `npm run build`; `npm test`; `npm run test:ui`: frontend checks.

@@ -28,3 +28,4 @@ build/
 
 # Tool data
 .mimocode/
+.claude/

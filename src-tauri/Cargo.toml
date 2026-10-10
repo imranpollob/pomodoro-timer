@@ -3,6 +3,7 @@ name = "pomodoro-desktop"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+repository.workspace = true
 
 [lib]
 name = "pomodoro_desktop_runtime"

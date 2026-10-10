@@ -35,7 +35,7 @@ Legacy contents worth keeping: `todos.json` (your task list) and `history.json` 
 ## 2. Path A: legacy `0.3.1` → `1.0.0`
 
 1. Close the legacy app and back up its profile (Section 1).
-2. Install `1.0.0` by following [README.md](README.md) for your OS. The installers and binaries use different names from the legacy ones (`pomodoro-desktop` vs `pomodoro`), so installing does not overwrite the old app.
+2. Install `1.0.0` by following [development guide](docs/development.md) for your OS. The installers and binaries use different names from the legacy ones (`pomodoro-desktop` vs `pomodoro`), so installing does not overwrite the old app.
 3. Launch `1.0.0` once and confirm a fresh profile is created (Timer page loads, no save errors).
 4. Recreate your tasks in the Tasks page, using your backed-up `todos.json` as reference. Your legacy history stays in the backup as an archive; it is not imported.
 5. Optional: uninstall the legacy app once you are settled:
@@ -105,6 +105,6 @@ Override with `POMODORO_DATA_DIR` (must be set before launching). The profile ho
 
 ## References
 
-- [README.md](README.md) — install, run, and build instructions.
+- [development guide](docs/development.md) — install, run, and build instructions.
 - [Backlog](docs/implementation/backlog.md) — what is implemented, deferred, and still needs acceptance.
 - [Platform checklist](docs/implementation/platform-validation.md) — installed-app verification per OS.

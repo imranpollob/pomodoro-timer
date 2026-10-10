@@ -140,6 +140,10 @@ impl GeometryService {
 
 /// Persisted compact size from the windows preference, or 200x44 when the
 /// preference is absent, corrupt, or fails validation.
+///
+/// Only Linux re-applies the size after showing the strip; other platforms
+/// keep it so the helper is compiled there for tests only.
+#[cfg(any(target_os = "linux", test))]
 pub fn compact_size_from_pref(raw: Option<&str>) -> (f64, f64) {
     raw.and_then(|raw| serde_json::from_str::<BTreeMap<String, Placement>>(raw).ok())
         .and_then(|map| map.get("compact").cloned())
