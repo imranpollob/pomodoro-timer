@@ -1,15 +1,29 @@
-"""Add varied synthetic UI/report sample data to a SQLite profile."""
+"""Add randomized synthetic UI/report sample data to a SQLite profile."""
 
 from __future__ import annotations
 
 import argparse
-import calendar
 import os
+import random
 import sqlite3
 import sys
 import uuid
 from datetime import datetime, time, timedelta
 from pathlib import Path
+
+
+TASK_TITLES = [
+    "Draft the project proposal",
+    "Review pull requests",
+    "Study Rust and Tauri",
+    "Organize the workspace",
+    "Plan the sprint",
+    "Write release notes",
+    "Fix flaky tests",
+    "Prepare the demo",
+    "Read the design spec",
+    "Clean up the backlog",
+]
 
 
 def main() -> None:
@@ -19,70 +33,71 @@ def main() -> None:
         type=Path,
         help="profile directory (defaults to POMODORO_DATA_DIR or the OS app-data path)",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        help="random seed; the same seed on the same day reproduces the same rows",
+    )
     args = parser.parse_args()
     profile = args.profile or default_profile()
     profile = profile.expanduser().resolve()
     profile.mkdir(parents=True, exist_ok=True)
     database = profile / "pomodoro.sqlite3"
-    tasks = [
-        ("demo-writing", "Draft the project proposal", "in_progress"),
-        ("demo-review", "Review pull requests", "todo"),
-        ("demo-study", "Study Rust and Tauri", "todo"),
-        ("demo-finished", "Organize the workspace", "done"),
-    ]
+    seed = args.seed if args.seed is not None else random.SystemRandom().randrange(2**32)
+    rng = random.Random(seed)
     now = datetime.now().astimezone()
     today = now.date()
-    month_index = today.year * 12 + today.month - 1 - 2
+    month_index = today.year * 12 + today.month - 1 - 11
     start_year, start_month = divmod(month_index, 12)
-    start_month += 1
-    range_start = today.replace(year=start_year, month=start_month, day=min(today.day, calendar.monthrange(start_year, start_month)[1])) + timedelta(days=1)
+    range_start = datetime(start_year, start_month + 1, 1).date()
     day_count = (today - range_start).days + 1
+
+    def new_id() -> str:
+        return str(uuid.UUID(int=rng.getrandbits(128), version=4))
+
+    def to_ms(moment: datetime) -> int:
+        return int(moment.timestamp() * 1000)
+
+    task_titles = rng.sample(TASK_TITLES, rng.randint(3, 8))
+    tasks = [(new_id(), title, rng.choice(["todo", "in_progress", "done"])) for title in task_titles]
+
     records: list[tuple[str, str, int, int, str, str | None, str | None]] = []
-    for days_ago in range(day_count - 1, -1, -1):
-        day = today - timedelta(days=days_ago)
-        morning = datetime.combine(day, time(9, 15)).astimezone()
-        count = 2 if day.weekday() < 5 and days_ago % 3 == 0 else 1
-        for index in range(count):
-            task = tasks[(days_ago + index) % len(tasks)]
-            start = morning + timedelta(minutes=75 * index)
-            outcome = "interrupted" if days_ago % 9 == 0 and index == 0 else "completed"
-            duration = 14 * 60_000 if outcome == "interrupted" else 25 * 60_000
-            records.append((
-                str(uuid.uuid5(uuid.NAMESPACE_URL, f"demo:{day}:focus:{index}")),
-                '"focus"', int(start.timestamp() * 1000), duration, outcome, task[0], task[1],
-            ))
-        if day.weekday() < 5 and days_ago % 2 == 0:
-            start = morning + timedelta(minutes=30)
-            break_outcome = "skipped" if days_ago % 10 == 0 else "completed"
-            records.append((
-                str(uuid.uuid5(uuid.NAMESPACE_URL, f"demo:{day}:break")),
-                '"short_break"', int(start.timestamp() * 1000), 5 * 60_000, break_outcome, None, None,
-            ))
-        if day.weekday() < 5 and days_ago % 7 == 0:
-            start = morning + timedelta(hours=2)
-            records.append((
-                str(uuid.uuid5(uuid.NAMESPACE_URL, f"demo:{day}:long-break")),
-                '"long_break"', int(start.timestamp() * 1000), 15 * 60_000, "completed", None, None,
-            ))
-        if days_ago % 4 == 0:
-            start = morning + timedelta(hours=4)
-            records.append((
-                str(uuid.uuid5(uuid.NAMESPACE_URL, f"demo:{day}:stopwatch")),
-                '"stopwatch"', int(start.timestamp() * 1000), 42 * 60_000, "finished", tasks[1][0], tasks[1][1],
-            ))
     completions: list[tuple[str, str, int]] = []
     for days_ago in range(day_count - 1, -1, -1):
         day = today - timedelta(days=days_ago)
-        if day.weekday() < 5 and days_ago % 3 != 1:
-            task = tasks[(days_ago // 2) % len(tasks)]
-            completed_at = datetime.combine(day, time(16, 30)).astimezone()
-            event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"demo-task-completion:{day}"))
-            completions.append((event_id, task[0], int(completed_at.timestamp() * 1000)))
-        if day.weekday() == 2 and days_ago % 7 == 0:
-            task = tasks[(days_ago // 3 + 1) % len(tasks)]
-            completed_at = datetime.combine(day, time(17, 15)).astimezone()
-            event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"demo-task-completion-extra:{day}"))
-            completions.append((event_id, task[0], int(completed_at.timestamp() * 1000)))
+        weekday = day.weekday() < 5
+        if rng.random() < (0.12 if weekday else 0.35):
+            continue
+        focus_count = rng.randint(1, 4) if weekday else rng.randint(0, 2)
+        cursor = datetime.combine(day, time(rng.randint(7, 10), rng.choice([0, 15, 30, 45]))).astimezone()
+        for index in range(focus_count):
+            task = rng.choice(tasks)
+            interrupted = rng.random() < 0.12
+            duration = rng.randint(6, 24) * 60_000 if interrupted else 25 * 60_000
+            records.append((
+                new_id(), '"focus"', to_ms(cursor), duration,
+                "interrupted" if interrupted else "completed", task[0], task[1],
+            ))
+            cursor += timedelta(milliseconds=duration) + timedelta(minutes=rng.randint(3, 12))
+            if rng.random() < 0.8:
+                if index % 4 == 3:
+                    records.append((new_id(), '"long_break"', to_ms(cursor), 15 * 60_000, "completed", None, None))
+                    cursor += timedelta(minutes=15)
+                else:
+                    outcome = "skipped" if rng.random() < 0.1 else "completed"
+                    records.append((new_id(), '"short_break"', to_ms(cursor), 5 * 60_000, outcome, None, None))
+                    cursor += timedelta(minutes=5)
+                cursor += timedelta(minutes=rng.randint(1, 5))
+        if rng.random() < 0.25:
+            start = datetime.combine(day, time(rng.randint(13, 19), rng.choice([0, 30]))).astimezone()
+            task = rng.choice(tasks) if rng.random() < 0.7 else None
+            records.append((
+                new_id(), '"stopwatch"', to_ms(start), rng.randint(10, 95) * 60_000, "finished",
+                task[0] if task else None, task[1] if task else None,
+            ))
+        for _ in range(rng.randint(0, 20)):
+            completed_at = datetime.combine(day, time(rng.randint(8, 22), rng.randint(0, 59))).astimezone()
+            completions.append((new_id(), rng.choice(tasks)[0], to_ms(completed_at)))
     with sqlite3.connect(database, timeout=10) as connection:
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA journal_mode=WAL")
@@ -120,7 +135,7 @@ def main() -> None:
                 "PRAGMA user_version=4;"
             )
         try:
-            now_ms = int(now.timestamp() * 1000)
+            now_ms = to_ms(now)
             before = connection.total_changes
             connection.executemany(
                 "INSERT OR IGNORE INTO tasks (id, title, status, created_unix_ms, updated_unix_ms) VALUES (?, ?, ?, ?, ?)",
@@ -140,7 +155,8 @@ def main() -> None:
             connection.rollback()
             raise
     print(f"Updated profile: {profile}")
-    print(f"Added {added} demo rows (up to {len(tasks)} tasks, {len(completions)} task completions, and {len(records)} sessions, spanning {range_start} through {today}, the last two months). Existing sessions, settings, and checkpoints were kept; a pre-v4 profile's one-time task reset was applied.")
+    print(f"Random seed {seed} (pass --seed {seed} to reproduce this batch on the same day).")
+    print(f"Added {added} demo rows (up to {len(tasks)} tasks, {len(completions)} task completions, and {len(records)} sessions, spanning {range_start} through {today}, the last twelve months). Existing sessions, settings, and checkpoints were kept; a pre-v4 profile's one-time task reset was applied.")
     print("Restart the desktop app to refresh tasks and reports.")
 
 

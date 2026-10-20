@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-async function mockDesktop(page: Page, options: { seconds: number; emptyReports?: boolean; recovered?: boolean; interruption?: string | null; opacity?: number; lastRecord?: boolean; platform?: string; failTaskStatusOnce?: boolean; taskTitle?: string } = { seconds: 1500 }) {
+async function mockDesktop(page: Page, options: { seconds: number; emptyReports?: boolean; recovered?: boolean; interruption?: string | null; opacity?: number; lastRecord?: boolean; platform?: string; failTaskStatusOnce?: boolean; taskTitle?: string; denseHistory?: boolean } = { seconds: 1500 }) {
   await page.addInitScript(options => {
     (window as unknown as { isTauri: boolean }).isTauri = true;
     const callbacks = new Map<number, (value: unknown) => void>();
@@ -30,6 +30,14 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
       { id: 'event-1', task_id: 'task-2', completed_unix_ms: yesterday.getTime() },
       { id: 'event-2', task_id: 'task-2', completed_unix_ms: today.getTime() },
     ];
+    if (options.denseHistory) {
+      for (let daysAgo = 0; daysAgo < 180; daysAgo += 1) {
+        if (daysAgo % 4 === 1) continue;
+        const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysAgo, 12).getTime();
+        taskCompletionEvents.push({ id: `dense-${daysAgo}`, task_id: 'task-2', completed_unix_ms: day });
+        if (daysAgo % 5 === 0) taskCompletionEvents.push({ id: `dense-extra-${daysAgo}`, task_id: 'task-1', completed_unix_ms: day });
+      }
+    }
     const listeners = new Map<string, number>();
     let finishCount = 0;
     let failTaskStatus = options.failTaskStatusOnce ?? false;
@@ -165,6 +173,7 @@ test('empty reports and missing desktop connection provide clear feedback', asyn
   await page.goto('/'); await expect(page.getByText('Desktop connection unavailable')).toBeVisible();
   await mockDesktop(page, { seconds: 1500, emptyReports: true }); await page.reload();
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
+  await page.getByRole('button', { name: 'Show sessions', exact: true }).click();
   await expect(page.getByText('No sessions in this range')).toBeVisible();
   await page.getByRole('button', { name: 'Timer', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Start focus', exact: true })).toBeVisible();
@@ -192,33 +201,32 @@ test('reports default to today with active preset states and inclusive ranges', 
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Reports', exact: true })).toBeVisible();
   const today = page.getByRole('button', { name: 'Today', exact: true });
-  const week = page.getByRole('button', { name: 'Last 7 days', exact: true });
-  const month = page.getByRole('button', { name: 'Last 30 days', exact: true });
-  await expect(page.getByLabel('Report start date')).toHaveValue('2026-10-05');
-  await expect(page.getByLabel('Report end date')).toHaveValue('2026-10-05');
+  const week = page.getByRole('button', { name: 'Last week', exact: true });
+  const month = page.getByRole('button', { name: 'Last month', exact: true });
+  await expect(page.getByLabel('Report start date')).toHaveCount(0);
   await expect(today).toHaveAttribute('aria-pressed', 'true');
   await expect(week).toHaveAttribute('aria-pressed', 'false');
   await expect(month).toHaveAttribute('aria-pressed', 'false');
   await week.click();
-  await expect(page.getByLabel('Report start date')).toHaveValue('2026-09-29');
+  await expect.poll(() => page.evaluate(() => (window as any).__reportRange.startUnixMs)).toBe(await page.evaluate(() => new Date('2026-09-29T00:00:00').getTime()));
   await expect(week).toHaveAttribute('aria-pressed', 'true');
   await expect(today).toHaveAttribute('aria-pressed', 'false');
   await month.click();
-  await expect(page.getByLabel('Report start date')).toHaveValue('2026-09-06');
   await expect(month).toHaveAttribute('aria-pressed', 'true');
   await expect(week).toHaveAttribute('aria-pressed', 'false');
   await expect.poll(() => page.evaluate(() => (window as any).__reportRange.startUnixMs)).toBe(await page.evaluate(() => new Date('2026-09-06T00:00:00').getTime()));
   expect(await page.evaluate(() => (window as any).__reportRange.endUnixMs)).toBe(await page.evaluate(() => new Date('2026-10-06T00:00:00').getTime()));
+  await page.getByRole('button', { name: 'Custom', exact: true }).click();
   await page.getByLabel('Report start date').fill('2026-09-01');
   await page.getByRole('button', { name: 'Apply dates' }).click();
   await expect(today).toHaveAttribute('aria-pressed', 'false');
   await expect(week).toHaveAttribute('aria-pressed', 'false');
   await expect(month).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.getByText('Write tests')).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Daily focus summary' })).toContainText('min \u00b7');
-  await expect(page.locator('table button')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Focus by month' })).toContainText('min');
+  await expect(page.locator('table')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Export CSV' })).toHaveCount(0);
-  await expect(page.locator('thead th')).toHaveCount(5);
+  await page.getByRole('button', { name: 'Show sessions', exact: true }).click();
+  await expect(page.locator('thead th')).toHaveCount(4);
 });
 
 test('each page uses shared typography and fits the fixed window in both themes', async ({ page }) => {
@@ -391,9 +399,51 @@ test('last session card summarizes the most recent record', async ({ page }) => 
   await expect(filled.getByText('Focus \u00b7 25:00 \u00b7 completed')).toBeVisible();
 });
 
+test('six-month heatmap keeps every week column the same width with a full history', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, denseHistory: true }); await page.goto('/');
+  await page.getByRole('button', { name: 'Reports', exact: true }).click();
+  const weeks = page.locator('.heatmap-week');
+  await expect(weeks).toHaveCount(27);
+  const widths = await weeks.evaluateAll(elements => elements.map(element => Math.round(element.getBoundingClientRect().width)));
+  expect(new Set(widths).size).toBe(1);
+  const cells = await page.locator('button.heatmap-cell').evaluateAll(elements => elements.map(element => Math.round(element.getBoundingClientRect().height)));
+  expect(new Set(cells).size).toBe(1);
+  await page.screenshot({ path: 'test-results/heatmap-dense.png', fullPage: true });
+});
+
+test('heatmap day tooltip appears immediately with focus time and tasks done', async ({ page }) => {
+  await mockDesktop(page); await page.goto('/');
+  await page.getByRole('button', { name: 'Reports', exact: true }).click();
+  const cell = page.locator('button.heatmap-cell:not([data-level="0"])').first();
+  await cell.hover();
+  const tip = page.getByRole('tooltip');
+  await expect(tip).toBeVisible({ timeout: 300 });
+  await expect(tip).toContainText(/\d+ min focused · \d+ tasks? done/);
+  await page.screenshot({ path: 'test-results/heatmap-tooltip.png' });
+  await expect(cell).toHaveAttribute('aria-label', /min focused · \d+ tasks? done/);
+  await page.mouse.move(0, 0);
+  await expect(tip).toHaveCount(0);
+});
+
+test('last 6 months and last year show a monthly focus chart', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-05T12:00:00Z'));
+  await mockDesktop(page); await page.goto('/');
+  await page.getByRole('button', { name: 'Reports', exact: true }).click();
+  await page.getByRole('button', { name: 'Last 6 months', exact: true }).click();
+  const chart = page.getByRole('region', { name: 'Focus by month' });
+  await expect(chart).toBeVisible();
+  await expect(chart.locator('.month-column')).toHaveCount(6);
+  await page.screenshot({ path: 'test-results/reports-last-6-months.png', fullPage: true });
+  await page.getByRole('button', { name: 'Last year', exact: true }).click();
+  await expect(chart.locator('.month-column')).toHaveCount(12);
+  await page.getByRole('button', { name: 'Last week', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Focus by month' })).toHaveCount(0);
+});
+
 test('reports table refreshes when a session lands while viewing reports', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
+  await page.getByRole('button', { name: 'Show sessions', exact: true }).click();
   const table = page.locator('.report-card table');
   await expect(table.getByRole('row')).toHaveCount(3);
   await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke('timer_command', { command: { type: 'finish' } }));
@@ -404,11 +454,11 @@ test('reports table refreshes when a session lands while viewing reports', async
 test('report table leads with start time and sorts newest first', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
-  await expect(page.locator('.report-card thead th')).toHaveText(['Start time', 'Session', 'Task', 'Active time', 'Outcome']);
+  await page.getByRole('button', { name: 'Show sessions', exact: true }).click();
+  await expect(page.locator('.report-card thead th')).toHaveText(['When', 'Type', 'Task', 'Focus time']);
   const rows = page.locator('.report-card tbody tr');
   await expect(rows.nth(0).locator('td').nth(1)).toHaveText('Stopwatch');
   await expect(rows.nth(0).locator('td').nth(3)).toHaveText('10:00');
-  await expect(rows.nth(0).locator('td').nth(4)).toHaveText('finished');
   await expect(rows.nth(1).locator('td').nth(1)).toHaveText('Focus');
   await expect(rows.nth(1).locator('td').nth(2)).toHaveText('Write tests');
 });
@@ -431,9 +481,9 @@ test('tasks move across the board and completion feedback updates the report hea
   await expect(page.locator('.column-done')).toContainText('Write tests');
   await expect(page.getByRole('status')).toContainText('Nice work!');
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
-  await expect(page.getByText('Last three months · 3 completions')).toBeVisible();
+  await expect(page.getByText('Last six months · 3 completions')).toBeVisible();
   await expect(page.locator('.streak-card strong')).toHaveText('2');
-  const heatmap = page.getByRole('group', { name: 'Task completions over the last three months' });
+  const heatmap = page.getByRole('group', { name: 'Task completions over the last six months' });
   await expect(heatmap).toBeVisible();
   const day = heatmap.locator('.heatmap-cell[aria-label]').first();
   await day.focus(); await expect(day).toBeFocused();
@@ -445,6 +495,7 @@ test('tasks move across the board and completion feedback updates the report hea
 test('settings reset reports clears recorded sessions everywhere', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
+  await page.getByRole('button', { name: 'Show sessions', exact: true }).click();
   await expect(page.locator('.report-card tbody tr')).toHaveCount(2);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Reset reports', exact: true }).click();
@@ -543,7 +594,7 @@ test('a rejected task move stays in its column and can be retried', async ({ pag
   await expect(page.locator('.column-done')).toContainText('Write tests');
   await expect(page.getByRole('alert')).toHaveCount(0);
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
-  await expect(page.getByText('Last three months · 3 completions')).toBeVisible();
+  await expect(page.getByText('Last six months · 3 completions')).toBeVisible();
 });
 
 test('task cards edit inline and remove only after confirmation', async ({ page }) => {
@@ -571,8 +622,8 @@ test('reports roll forward after midnight and refresh on resume without changing
   await page.clock.fastForward(30_000);
   await expect(page.locator('.heatmap-cell[aria-label]').last()).toHaveAttribute('aria-label', /October 22, 2026/);
   await expect(page.locator('.streak-card strong')).toHaveText('0');
-  await expect(page.getByLabel('Report start date')).toHaveValue('2026-10-22');
   await expect(page.getByRole('button', { name: 'Today', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Custom', exact: true }).click();
   await page.getByLabel('Report start date').fill('2026-10-01');
   await page.getByLabel('Report end date').fill('2026-10-05');
   await page.getByRole('button', { name: 'Apply dates', exact: true }).click();
@@ -581,7 +632,6 @@ test('reports roll forward after midnight and refresh on resume without changing
   await expect(page.locator('.heatmap-cell[aria-label]').last()).toHaveAttribute('aria-label', /October 25, 2026/);
   await expect(page.getByLabel('Report start date')).toHaveValue('2026-10-01');
   await expect(page.getByLabel('Report end date')).toHaveValue('2026-10-05');
-  await expect(page.getByText('Independent of session date range')).toBeVisible();
 });
 
 test('settings groups put destructive reset after everyday preferences', async ({ page }) => {

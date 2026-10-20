@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { TimerClient } from './lib/client';
   import { mergeUnedited } from './lib/drafts';
-  import { buildCompletionSummary } from './lib/taskProgress';
+  import { buildCompletionSummary, type CompletionDay } from './lib/taskProgress';
   import { transport, invoke, listen } from './lib/desktop';
   import {
     actionLabel, formatTime, localDate, phaseLabel,
@@ -65,6 +65,10 @@
   let reportTotals = $state<DailyTotals | null>(null);
   let reportFrom = $state('');
   let reportTo = $state('');
+  let reportCustom = $state(false);
+  let reportShowSessions = $state(false);
+  let heatmapSessions = $state<SessionRecord[]>([]);
+  let heatTip = $state<{ text: string; x: number; y: number; end: boolean } | null>(null);
   let reportLoaded = $state(false);
   let reportDays = $derived.by(() => {
     const groups = new Map<string, { day: string; minutes: number; sessions: number }>();
@@ -76,9 +80,50 @@
     }
     return [...groups.values()].sort((a, b) => a.day.localeCompare(b.day));
   });
-  let completionSummary = $derived(buildCompletionSummary(taskCompletionEvents, new Date(`${calendarDate}T12:00:00`)));
+  let completionSummary = $derived(buildCompletionSummary(taskCompletionEvents, new Date(`${calendarDate}T12:00:00`), heatmapSessions));
   let sortedReportRows = $derived([...reportRows].sort((a, b) => b.started_unix_ms - a.started_unix_ms));
+  let usefulReportRows = $derived(sortedReportRows.filter(record => record.phase === 'focus' || record.phase === 'stopwatch'));
+  let reportSessionLimit = $state(20);
+  let visibleReportRows = $derived(usefulReportRows.slice(0, reportSessionLimit));
   let maxReportDay = $derived(Math.max(1, ...reportDays.map(day => day.minutes)));
+  let reportLongRange = $derived(Boolean(reportFrom && reportTo) && Math.round((localMidnight(reportTo) - localMidnight(reportFrom)) / 86_400_000) > 30);
+  let reportMonths = $derived.by(() => {
+    if (!reportLongRange) return [];
+    const totals = new Map<string, number>();
+    for (const record of reportRows) {
+      if (record.phase !== 'focus' && record.phase !== 'stopwatch') continue;
+      const month = localDate(new Date(record.started_unix_ms)).slice(0, 7);
+      totals.set(month, (totals.get(month) ?? 0) + record.active_ms / 60_000);
+    }
+    const start = new Date(`${reportFrom}T00:00:00`);
+    const end = new Date(`${reportTo}T00:00:00`);
+    const months: { key: string; label: string; minutes: number }[] = [];
+    for (let month = new Date(start.getFullYear(), start.getMonth(), 1); month <= end; month = new Date(month.getFullYear(), month.getMonth() + 1, 1)) {
+      const key = localDate(month).slice(0, 7);
+      months.push({ key, label: month.toLocaleDateString(undefined, { month: 'short', year: '2-digit' }), minutes: totals.get(key) ?? 0 });
+    }
+    return months;
+  });
+  let maxReportMonth = $derived(Math.max(1, ...reportMonths.map(month => month.minutes)));
+  let reportFocusMinutes = $derived(reportTotals ? (reportTotals.pomodoro_ms + reportTotals.stopwatch_ms) / 60_000 : 0);
+  let pomodoroShare = $derived(reportTotals && reportFocusMinutes > 0 ? Math.round(reportTotals.pomodoro_ms / (reportTotals.pomodoro_ms + reportTotals.stopwatch_ms) * 100) : 0);
+  let reportBestDay = $derived(reportDays.length ? reportDays.reduce((best, day) => day.minutes > best.minutes ? day : best) : null);
+  let reportTopTask = $derived.by(() => {
+    const totals = new Map<string, number>();
+    for (const record of reportRows) {
+      if ((record.phase !== 'focus' && record.phase !== 'stopwatch') || !record.task) continue;
+      totals.set(record.task.title, (totals.get(record.task.title) ?? 0) + record.active_ms / 60_000);
+    }
+    let top: { title: string; minutes: number } | null = null;
+    for (const [title, minutes] of totals) if (!top || minutes > top.minutes) top = { title, minutes };
+    return top;
+  });
+  let reportMessage = $derived(
+    reportFocusMinutes === 0 ? 'No focus time in this range yet. Start a session to get moving.'
+      : reportFocusMinutes < 60 ? 'A good start. Every session counts.'
+      : reportFocusMinutes < 300 ? 'Solid focus. Keep the rhythm going.'
+      : 'Outstanding focus. You put in serious time.'
+  );
   let newTaskTitle = $state('');
   let editingTaskId = $state<string | null>(null);
   let editingTaskTitle = $state('');
@@ -103,7 +148,16 @@
   function dateLabel(value: string) {
     return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   }
-  function completionLevel(count: number) { return count === 0 ? 0 : Math.min(4, count); }
+  function completionLevel(count: number) { return count === 0 ? 0 : count <= 2 ? 1 : count <= 5 ? 2 : count <= 10 ? 3 : 4; }
+  function heatLabel(day: CompletionDay) {
+    return `${dateLabel(day.day)} · ${Math.floor(day.minutes)} min focused · ${day.count} ${day.count === 1 ? 'task' : 'tasks'} done`;
+  }
+  function showHeatTip(cell: HTMLElement, day: CompletionDay) {
+    const rect = cell.getBoundingClientRect();
+    const end = rect.left > window.innerWidth / 2;
+    heatTip = { text: heatLabel(day), x: end ? rect.right : rect.left, y: rect.top - 8, end };
+  }
+  function hideHeatTip() { heatTip = null; }
   function statusLabel(status: TaskStatus) {
     return taskColumns.find(column => column.status === status)?.label ?? 'To do';
   }
@@ -120,6 +174,14 @@
     if (page !== 'reports' || !reportLoaded || !reportFrom || !reportTo || reportFrom > reportTo) return;
     void loadReport();
   }
+  // The heatmap always covers six months, independent of the selected session range.
+  function completionWindow() {
+    const today = new Date(`${calendarDate}T00:00:00`);
+    const start = new Date(today.getFullYear(), today.getMonth() - 6, 1);
+    start.setDate(start.getDate() - 7);
+    const end = new Date(today); end.setDate(end.getDate() + 1);
+    return { startUnixMs: start.getTime(), endUnixMs: end.getTime() };
+  }
   async function loadReport() {
     if (updateCalendarDate()) void loadToday().catch(reportError);
     if (!reportFrom || !reportTo || reportFrom > reportTo) { reportError('Choose a valid report date range.'); return; }
@@ -127,38 +189,40 @@
     const endDate = new Date(`${reportTo}T00:00:00`); endDate.setDate(endDate.getDate() + 1);
     const end = endDate.getTime();
     try {
-      const [rows, totals, completions] = await Promise.all([
+      // The heatmap request goes first so the selected-range request is the last report_records call.
+      const [heatmap, rows, totals, completions] = await Promise.all([
+        invoke<SessionRecord[]>('report_records', completionWindow()),
         invoke<SessionRecord[]>('report_records', { startUnixMs: start, endUnixMs: end }),
         invoke<DailyTotals>('daily_totals', { startUnixMs: start, endUnixMs: end }),
         invoke<TaskCompletionEvent[]>('task_completion_events'),
       ]);
-      reportRows = rows; reportTotals = totals; taskCompletionEvents = completions; reportLoaded = true; error = '';
+      heatmapSessions = heatmap; reportRows = rows; reportTotals = totals; taskCompletionEvents = completions; reportLoaded = true; error = '';
     } catch (e) { reportError(e); }
   }
-  function matchPreset(from: string, to: string): 'today' | 'week' | 'month' | null {
+  type ReportPreset = 'today' | 'week' | 'month' | 'sixMonths' | 'year';
+  const reportPresets: ReportPreset[] = ['today', 'week', 'month', 'sixMonths', 'year'];
+  function presetStart(preset: ReportPreset, today: Date) {
+    const day = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    if (preset === 'sixMonths') return new Date(day.getFullYear(), day.getMonth() - 5, 1);
+    if (preset === 'year') return new Date(day.getFullYear(), day.getMonth() - 11, 1);
+    day.setDate(day.getDate() - (preset === 'today' ? 0 : preset === 'week' ? 6 : 29));
+    return day;
+  }
+  function matchPreset(from: string, to: string): ReportPreset | null {
     if (!from || !to) return null;
     const now = new Date(`${calendarDate}T12:00:00`);
-    const end = localDate(now);
-    if (to !== end) return null;
-    if (from === end) return 'today';
-    const week = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    week.setDate(week.getDate() - 6);
-    if (from === localDate(week)) return 'week';
-    const month = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    month.setDate(month.getDate() - 29);
-    if (from === localDate(month)) return 'month';
-    return null;
+    if (to !== localDate(now)) return null;
+    return reportPresets.find(preset => from === localDate(presetStart(preset, now))) ?? null;
   }
   let reportPreset = $derived(matchPreset(reportFrom, reportTo));
-  function setReportRange(days: 1 | 7 | 30) {
+  function setReportRange(preset: ReportPreset) {
     const today = new Date();
-    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    start.setDate(start.getDate() - days + 1);
-    reportFrom = localDate(start); reportTo = localDate(today);
+    reportFrom = localDate(presetStart(preset, today)); reportTo = localDate(today);
   }
-  function setReportPreset(days: 1 | 7 | 30) {
+  function setReportPreset(preset: ReportPreset) {
     updateCalendarDate();
-    setReportRange(days);
+    reportCustom = false;
+    setReportRange(preset);
     void loadReport();
   }
   // Calendar refreshes never advance the timer; elapsed time remains backend-owned.
@@ -167,7 +231,7 @@
     if (nextDate === calendarDate) return false;
     const preset = matchPreset(reportFrom, reportTo);
     calendarDate = nextDate;
-    if (preset) setReportRange(preset === 'today' ? 1 : preset === 'week' ? 7 : 30);
+    if (preset) setReportRange(preset);
     return true;
   }
   function refreshCalendar() {
@@ -369,12 +433,13 @@
     });
   }
   function navigate(destination: string) {
+    heatTip = null;
     refreshCalendar();
     page = destination;
     window.scrollTo(0, 0);
     if (destination === 'settings' && snapshot) { draft = { ...snapshot.settings }; timerDirty = false; timerSaveStatus = ''; }
     if (destination === 'reports') {
-      if (!reportLoaded) setReportPreset(1);
+      if (!reportLoaded) setReportPreset('today');
       else void loadReport();
     }
   }
@@ -507,32 +572,48 @@
         </section>
       {:else if page === 'reports'}
         <section class="content-card report-card"><div class="card-title"><Icon name="chart" /><h2>Reports</h2></div>
-          <div class="report-toolbar"><div class="report-presets" role="group" aria-label="Session date range"><button class="secondary" aria-pressed={reportPreset === 'today'} onclick={() => setReportPreset(1)}>Today</button><button class="secondary" aria-pressed={reportPreset === 'week'} onclick={() => setReportPreset(7)}>Last 7 days</button><button class="secondary" aria-pressed={reportPreset === 'month'} onclick={() => setReportPreset(30)}>Last 30 days</button></div>
-            <form class="report-dates" onsubmit={event => { event.preventDefault(); void loadReport(); }}><label>From<input aria-label="Report start date" type="date" bind:value={reportFrom} /></label><label>To<input aria-label="Report end date" type="date" bind:value={reportTo} /></label>
-            <button class="secondary" type="submit">Apply dates</button></form>
+          <div class="report-toolbar"><div class="report-presets" role="group" aria-label="Session date range"><button class="secondary" aria-pressed={reportPreset === 'today'} onclick={() => setReportPreset('today')}>Today</button><button class="secondary" aria-pressed={reportPreset === 'week'} onclick={() => setReportPreset('week')}>Last week</button><button class="secondary" aria-pressed={reportPreset === 'month'} onclick={() => setReportPreset('month')}>Last month</button><button class="secondary" aria-pressed={reportPreset === 'sixMonths'} onclick={() => setReportPreset('sixMonths')}>Last 6 months</button><button class="secondary" aria-pressed={reportPreset === 'year'} onclick={() => setReportPreset('year')}>Last year</button><button class="secondary" aria-pressed={reportCustom} onclick={() => reportCustom = !reportCustom}>Custom</button></div>
+            {#if reportCustom}<form class="report-dates" onsubmit={event => { event.preventDefault(); void loadReport(); }}><label>From<input aria-label="Report start date" type="date" bind:value={reportFrom} /></label><label>To<input aria-label="Report end date" type="date" bind:value={reportTo} /></label>
+            <button class="secondary" type="submit">Apply dates</button></form>{/if}
           </div>
           {#if reportTotals}
-            <div class="report-totals"><article><span>Focus time</span><strong>{Math.floor((reportTotals.pomodoro_ms + reportTotals.stopwatch_ms) / 3_600_000)}h {Math.floor(((reportTotals.pomodoro_ms + reportTotals.stopwatch_ms) % 3_600_000) / 60_000)}m</strong></article><article><span>Pomodoro sessions</span><strong>{reportTotals.pomodoro_sessions}</strong></article><article><span>Stopwatch sessions</span><strong>{reportTotals.stopwatch_sessions}</strong></article></div>
+            <section class="report-snapshot" aria-label="Range summary">
+              <div class="snapshot-hero">
+                <span class="snapshot-kicker">Focus time in this range</span>
+                <strong class="snapshot-value">{Math.floor(reportFocusMinutes / 60)}h {Math.floor(reportFocusMinutes % 60)}m</strong>
+                <p class="snapshot-message">{reportMessage}</p>
+                {#if reportFocusMinutes > 0}<div class="snapshot-mix" role="img" aria-label={`Pomodoro ${pomodoroShare}%, stopwatch ${100 - pomodoroShare}%`}><i style={`width:${pomodoroShare}%`}></i></div>
+                <div class="snapshot-legend"><span>Pomodoro {pomodoroShare}%</span><span>Stopwatch {100 - pomodoroShare}%</span></div>{/if}
+              </div>
+              <div class="snapshot-cards">
+                <article><span>Sessions</span><strong class="snapshot-count">{reportTotals.pomodoro_sessions + reportTotals.stopwatch_sessions}</strong></article>
+                <article><span>Best day</span><strong>{reportBestDay ? new Date(`${reportBestDay.day}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : '—'}</strong><small>{reportBestDay ? `${Math.floor(reportBestDay.minutes)} min` : 'No focus yet'}</small></article>
+                <article><span>Top task</span><strong>{reportTopTask ? truncate(reportTopTask.title) : '—'}</strong><small>{reportTopTask ? `${Math.floor(reportTopTask.minutes)} min` : 'No tasks tracked yet'}</small></article>
+              </div>
+            </section>
             <section class="completion-panel" aria-labelledby="completion-heading">
-              <div class="completion-panel-heading"><div><h3 id="completion-heading">Tasks completed</h3><p class="completion-subtitle">Last three months · {completionSummary.total} completions</p><p class="completion-range-note">Independent of session date range</p></div>
+              <div class="completion-panel-heading"><div><h3 id="completion-heading">Tasks completed</h3><p class="completion-subtitle">Last six months · {completionSummary.total} completions</p></div>
                 <div class="streak-card"><span class="streak-flame"><Icon name="flame" size={22} /></span><strong>{completionSummary.streak}</strong><span>day streak</span></div>
               </div>
-              <div class="heatmap-scroll"><div class="heatmap" role="group" aria-label="Task completions over the last three months">
+              <div class="heatmap-scroll"><div class="heatmap" role="group" aria-label="Task completions over the last six months">
                 <div class="heatmap-weekdays" aria-hidden="true"><span></span><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
                 <div class="heatmap-weeks" style={`--heatmap-weeks: ${completionSummary.weeks.length}`}>{#each completionSummary.weeks as week, weekIndex (`${weekIndex}-${week.month}`)}
                   <div class="heatmap-week"><span class="heatmap-month">{week.month}</span>
                     {#each week.days as day, dayIndex (`${weekIndex}-${dayIndex}`)}
-                      {#if day}<button type="button" class="heatmap-cell" data-level={completionLevel(day.count)} title={`${day.count} ${day.count === 1 ? 'task' : 'tasks'} completed · ${dateLabel(day.day)}`} aria-label={`${day.count} ${day.count === 1 ? 'task' : 'tasks'} completed on ${dateLabel(day.day)}`}></button>
+                      {#if day}<button type="button" class="heatmap-cell" data-level={completionLevel(day.count)} aria-label={heatLabel(day)} onpointerenter={event => showHeatTip(event.currentTarget, day)} onpointerleave={hideHeatTip} onfocus={event => showHeatTip(event.currentTarget, day)} onblur={hideHeatTip}></button>
                       {:else}<span class="heatmap-cell heatmap-blank" aria-hidden="true"></span>{/if}
                     {/each}
                   </div>
                 {/each}</div>
               </div></div>
+              {#if heatTip}<div class="heat-tip" role="tooltip" style={`left:${heatTip.x}px;top:${heatTip.y}px;transform:translate(${heatTip.end ? '-100%' : '0'}, -100%)`}>{heatTip.text}</div>{/if}
               <div class="heatmap-legend" aria-label="Completion levels"><span>Less</span>{#each [0, 1, 2, 3, 4] as level}<i data-level={level} aria-hidden="true"></i>{/each}<span>More</span></div>
             </section>
-            {#if reportDays.length}<section class="report-days" aria-label="Daily focus summary"><h3>Focus by day</h3>{#each reportDays as day (day.day)}<div class="report-day"><time datetime={day.day}>{new Date(`${day.day}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</time><span class="report-bar-track"><i style={`width:${Math.max(2, day.minutes / maxReportDay * 100)}%`}></i></span><strong>{Math.floor(day.minutes)} min · {day.sessions}</strong></div>{/each}</section>{/if}
-            {#if reportRows.length === 0}<div class="empty-state"><h3>No sessions in this range</h3><p>Try a wider date range.</p></div>
-            {:else}<div class="table-wrap"><table><thead><tr><th>Start time</th><th>Session</th><th>Task</th><th>Active time</th><th>Outcome</th></tr></thead><tbody>{#each sortedReportRows as record (record.id)}<tr><td>{new Date(record.started_unix_ms).toLocaleString()}</td><td>{phaseLabel[record.phase]}</td><td>{record.task?.title ?? '—'}</td><td>{formatTime(Math.floor(record.active_ms / 1000))}</td><td><span class="outcome">{record.outcome}</span></td></tr>{/each}</tbody></table></div>{/if}
+            {#if reportLongRange}<section class="report-months" aria-label="Focus by month"><h3>Focus by month</h3><div class="month-chart">{#each reportMonths as month (month.key)}<div class="month-column"><span class="month-value">{Math.floor(month.minutes)} min</span><span class="month-track"><i style={`height:${month.minutes / maxReportMonth * 100}%`}></i></span><span class="month-label">{month.label}</span></div>{/each}</div></section>{:else if reportDays.length}<section class="report-days" aria-label="Daily focus summary"><h3>Focus by day</h3>{#each reportDays as day (day.day)}<div class="report-day"><time datetime={day.day}>{new Date(`${day.day}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</time><span class="report-bar-track"><i style={`width:${Math.max(2, day.minutes / maxReportDay * 100)}%`}></i></span><strong>{Math.floor(day.minutes)} min · {day.sessions}</strong></div>{/each}</section>{/if}
+            <div class="sessions-header"><h3>Sessions</h3><button class="secondary" aria-expanded={reportShowSessions} onclick={() => reportShowSessions = !reportShowSessions}>{reportShowSessions ? 'Hide sessions' : 'Show sessions'}</button></div>
+            {#if reportShowSessions}{#if usefulReportRows.length === 0}<div class="empty-state"><h3>No sessions in this range</h3><p>Try a wider date range.</p></div>
+            {:else}<div class="table-wrap"><table><thead><tr><th>When</th><th>Type</th><th>Task</th><th>Focus time</th></tr></thead><tbody>{#each visibleReportRows as record (record.id)}<tr><td>{new Date(record.started_unix_ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</td><td>{phaseLabel[record.phase]}</td><td>{record.task?.title ?? '—'}</td><td>{formatTime(Math.floor(record.active_ms / 1000))}</td></tr>{/each}</tbody></table></div>
+            {#if usefulReportRows.length > visibleReportRows.length}<button class="secondary show-more" onclick={() => reportSessionLimit += 20}>Show more ({usefulReportRows.length - visibleReportRows.length} left)</button>{/if}{/if}{/if}
           {/if}
         </section>
       {:else if draft}
