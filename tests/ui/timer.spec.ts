@@ -348,6 +348,12 @@ test('settings checkboxes only toggle on their own text', async ({ page }) => {
   await expect(page.getByLabel('Send completion notifications')).not.toBeChecked();
 });
 
+test('timer New task button opens the tasks page with the title field focused', async ({ page }) => {
+  await mockDesktop(page); await page.goto('/');
+  await page.getByRole('button', { name: 'New task', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'New task' })).toBeFocused();
+});
+
 test('focus task picker only shows when the timer is idle', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   const taskSelect = page.getByLabel('Task for the next session');
@@ -412,15 +418,16 @@ test('tasks move across the board and completion feedback updates the report hea
   await page.getByRole('button', { name: 'Tasks', exact: true }).click();
   await page.screenshot({ path: 'test-results/tasks-board.png', fullPage: true });
   const task = page.locator('.task-item-card').filter({ hasText: 'Write tests' });
+  await task.hover();
+  await expect(task.locator('.task-card-controls')).toHaveCSS('opacity', '1');
+  await page.screenshot({ path: 'test-results/tasks-hover.png', fullPage: true });
   await task.locator('.task-card-title').dragTo(page.locator('.column-in_progress'));
   await expect(page.locator('.column-in_progress')).toContainText('Write tests');
   await page.getByRole('button', { name: 'Timer', exact: true }).click();
-  await expect(page.getByRole('option', { name: /Write tests · In progress/ })).toBeAttached();
+  await expect(page.getByRole('option', { name: 'In progress · Write tests', exact: true })).toBeAttached();
   await expect(page.getByRole('option', { name: /Review requirements/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Tasks', exact: true }).click();
-  const move = page.getByRole('combobox', { name: 'Move Write tests' });
-  await move.focus(); await page.keyboard.press('d');
-  await expect(move).toHaveValue('done');
+  await task.locator('.task-card-title').dragTo(page.locator('.column-done'));
   await expect(page.locator('.column-done')).toContainText('Write tests');
   await expect(page.getByRole('status')).toContainText('Nice work!');
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
@@ -525,43 +532,34 @@ test('task board exposes every status without horizontal scrolling', async ({ pa
   await page.screenshot({ path: 'test-results/task-board.png', fullPage: true });
 });
 
-test('a rejected task status stays persisted and can be retried with keyboard focus preserved', async ({ page }) => {
+test('a rejected task move stays in its column and can be retried', async ({ page }) => {
   await mockDesktop(page, { seconds: 1500, failTaskStatusOnce: true }); await page.goto('/');
   await page.getByRole('button', { name: 'Tasks', exact: true }).click();
-  const move = page.getByRole('combobox', { name: 'Move Write tests' });
-  await move.focus();
-  await move.selectOption('done');
+  const task = page.locator('.task-item-card').filter({ hasText: 'Write tests' });
+  await task.locator('.task-card-title').dragTo(page.locator('.column-done'));
   await expect(page.getByRole('alert')).toContainText('Simulated database write failure');
-  await expect(move).toHaveValue('todo');
-  await expect(move).toBeFocused();
   await expect(page.locator('.column-todo')).toContainText('Write tests');
-  await move.selectOption('done');
+  await task.locator('.task-card-title').dragTo(page.locator('.column-done'));
   await expect(page.locator('.column-done')).toContainText('Write tests');
-  await expect(move).toHaveValue('done');
-  await expect(move).toBeFocused();
   await expect(page.getByRole('alert')).toHaveCount(0);
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
   await expect(page.getByText('Last three months · 3 completions')).toBeVisible();
 });
 
-test('task Actions supports keyboard editing and confirmed removal', async ({ page }) => {
+test('task cards edit inline and remove only after confirmation', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   await page.getByRole('button', { name: 'Tasks', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
-  const actions = page.getByRole('button', { name: 'Actions for Write tests', exact: true });
-  await actions.focus(); await actions.press('Enter');
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit Write tests', exact: true }).click();
   await page.getByRole('textbox', { name: 'Edit task title' }).fill('Review the release');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await page.getByRole('button', { name: 'Actions for Review the release', exact: true }).click();
-  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove Review the release', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('Saved sessions will keep its title.');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.locator('.task-card-title')).toContainText(['Review the release', 'Review requirements']);
-  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove Review the release', exact: true }).click();
   await dialog.getByRole('button', { name: 'Remove', exact: true }).click();
-  await expect(page.getByRole('combobox', { name: 'Move Review the release' })).toHaveCount(0);
+  await expect(page.locator('.task-item-card').filter({ hasText: 'Review the release' })).toHaveCount(0);
 });
 
 test('reports roll forward after midnight and refresh on resume without changing custom dates', async ({ page }) => {

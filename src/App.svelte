@@ -82,7 +82,6 @@
   let newTaskTitle = $state('');
   let editingTaskId = $state<string | null>(null);
   let editingTaskTitle = $state('');
-  let taskActionsId = $state<string | null>(null);
   const taskColumns: { status: TaskStatus; label: string }[] = [
     { status: 'todo', label: 'To do' },
     { status: 'in_progress', label: 'In progress' },
@@ -107,6 +106,15 @@
   function completionLevel(count: number) { return count === 0 ? 0 : Math.min(4, count); }
   function statusLabel(status: TaskStatus) {
     return taskColumns.find(column => column.status === status)?.label ?? 'To do';
+  }
+  function truncate(text: string, max = 40) {
+    const characters = [...text];
+    return characters.length > max ? `${characters.slice(0, max - 1).join('').trimEnd()}…` : text;
+  }
+  async function openNewTask() {
+    navigate('tasks');
+    await tick();
+    document.getElementById('new-task-title')?.focus();
   }
   function refreshReportIfVisible() {
     if (page !== 'reports' || !reportLoaded || !reportFrom || !reportTo || reportFrom > reportTo) return;
@@ -171,12 +179,9 @@
     try { await invoke(command, args); await loadTasks(); return true; }
     catch (e) { reportError(e); return false; }
   }
-  async function setTaskStatus(id: string, status: TaskStatus, control?: HTMLSelectElement) {
+  async function setTaskStatus(id: string, status: TaskStatus) {
     const existing = tasks.find(task => task.id === id);
-    // Keep the displayed selection at its persisted value until the backend accepts it.
-    if (control && existing) control.value = existing.status;
     if (!existing || existing.status === status || changingTaskIds.includes(id)) return;
-    const restoreFocus = control === document.activeElement;
     changingTaskIds = [...changingTaskIds, id];
     error = '';
     try {
@@ -191,10 +196,6 @@
     } catch (e) { reportError(e); }
     finally {
       changingTaskIds = changingTaskIds.filter(taskId => taskId !== id);
-      await tick();
-      if (restoreFocus && page === 'tasks' && (document.activeElement === document.body || document.activeElement === control)) {
-        document.getElementById(`task-status-${id}`)?.focus();
-      }
     }
   }
   function dragTask(event: DragEvent, id: string) {
@@ -454,12 +455,13 @@
               <button aria-pressed={snapshot.phase === 'stopwatch'} disabled={snapshot.status !== 'idle' || busy} onclick={() => void send({ type: 'set_mode', mode: 'stopwatch' })}>Stopwatch</button>
             </div>
             {#if snapshot.active_task}<p class="active-task" title={snapshot.active_task.title}>Current session: <strong>{snapshot.active_task.title}</strong></p>{/if}
-            {#if snapshot.status === 'idle'}<label class="task-select">Focus task
+            {#if snapshot.status === 'idle'}<div class="task-select"><span class="task-select-label">Focus task</span>
               <select aria-label="Task for the next session" value={snapshot.selected_task?.id ?? ''} disabled={busy} onchange={event => void setTask(event.currentTarget.value)}>
                 <option value="">No task selected</option>
-                {#each tasks.filter(task => task.status !== 'done') as task (task.id)}<option value={task.id}>{task.title} · {statusLabel(task.status)}</option>{/each}
+                {#each tasks.filter(task => task.status !== 'done') as task (task.id)}<option value={task.id}>{statusLabel(task.status)} · {truncate(task.title)}</option>{/each}
               </select>
-            </label>{/if}
+              <button type="button" class="task-new" onclick={openNewTask}><Icon name="plus" size={16} />New task</button>
+            </div>{/if}
             <div class="timer-face" class:break-phase={snapshot.phase.includes('break')} role="group" aria-label={`${phaseLabel[snapshot.phase]} timer`}>
               <svg class="timer-ring" viewBox="0 0 300 300" aria-hidden="true"><circle class="ring-track" cx="150" cy="150" r="138" /><circle class="ring-progress" cx="150" cy="150" r="138" pathLength="100" stroke-dasharray={`${snapshot.phase === 'stopwatch' ? 0 : 100 * (1 - progress)} 100`} /></svg>
               <div class="timer-inner"><p class="phase-label">{phaseLabel[snapshot.phase]}</p><span class="time-digits" role="timer">{formatTime(snapshot.display_seconds)}</span>
@@ -479,7 +481,7 @@
         </div>
       {:else if page === 'tasks'}
         <section class="content-card task-card"><div class="card-title"><Icon name="check" /><h2>Tasks</h2></div>
-          <form class="new-task-form" onsubmit={addTask}><label for="new-task-title">New task</label><div class="input-unit"><input id="new-task-title" class="task-title-input" type="text" maxlength="120" required bind:value={newTaskTitle} placeholder="What will you focus on?" /><button class="primary" type="submit" disabled={!newTaskTitle.trim()}>Add task</button></div></form>
+          <form class="new-task-form" onsubmit={addTask}><label for="new-task-title">New task</label><div class="input-unit"><input id="new-task-title" class="task-title-input" type="text" required bind:value={newTaskTitle} placeholder="What will you focus on?" /><button class="primary" type="submit" disabled={!newTaskTitle.trim()}>Add task</button></div></form>
           {#if taskCelebration}<div class="completion-toast" role="status"><Icon name="sparkles" />{taskCelebration}</div>{/if}
           <div class="task-board" aria-label="Task board">
             {#each taskColumns as column (column.status)}
@@ -490,11 +492,9 @@
                   {#each tasks.filter(task => task.status === column.status) as task (task.id)}
                     <article class="task-item-card" draggable={!changingTaskIds.includes(task.id)} ondragstart={event => dragTask(event, task.id)} ondragend={() => dragOverColumn = null}>
                       {#if editingTaskId === task.id}
-                        <form class="task-edit" onsubmit={event => { event.preventDefault(); void saveTask(task.id); }}><input aria-label="Edit task title" maxlength="120" required bind:value={editingTaskTitle} /><button class="secondary" type="submit">Save</button><button class="secondary" type="button" onclick={() => editingTaskId = null}>Cancel</button></form>
+                        <form class="task-edit" onsubmit={event => { event.preventDefault(); void saveTask(task.id); }}><input aria-label="Edit task title" required bind:value={editingTaskTitle} /><button class="secondary" type="submit">Save</button><button class="secondary" type="button" onclick={() => editingTaskId = null}>Cancel</button></form>
                       {:else}
-                        <div class="task-card-title"><span class="task-grip" aria-hidden="true">⠿</span><strong>{task.title}</strong></div>
-                        <div class="task-card-controls"><label class="task-move-label"><span class="sr-only">Move to</span><select id={`task-status-${task.id}`} aria-label={`Move ${task.title}`} value={task.status} disabled={changingTaskIds.includes(task.id)} onchange={event => void setTaskStatus(task.id, event.currentTarget.value as TaskStatus, event.currentTarget)}>{#each taskColumns as destination}<option value={destination.status}>{destination.label}</option>{/each}</select></label>
-                        <div class="task-actions-menu" class:open={taskActionsId === task.id}><button class="task-actions-toggle" aria-label={`Actions for ${task.title}`} aria-expanded={taskActionsId === task.id} aria-controls={`task-actions-${task.id}`} onclick={() => taskActionsId = taskActionsId === task.id ? null : task.id}>Actions</button><div id={`task-actions-${task.id}`} class="task-actions" hidden={taskActionsId !== task.id}><button class="secondary" onclick={() => { taskActionsId = null; editingTaskId = task.id; editingTaskTitle = task.title; }}>Edit</button><button class="secondary danger" onclick={() => void removeTask(task.id)}>Remove</button></div></div></div>
+                        <div class="task-card-title"><span class="task-grip" aria-hidden="true">⠿</span><strong>{task.title}</strong><div class="task-card-controls"><button title="Edit" aria-label={`Edit ${task.title}`} onclick={() => { editingTaskId = task.id; editingTaskTitle = task.title; }}><Icon name="edit" size={16} /></button><button class="danger" title="Remove" aria-label={`Remove ${task.title}`} onclick={() => void removeTask(task.id)}><Icon name="trash" size={16} /></button></div></div>
                       {/if}
                     </article>
                   {:else}

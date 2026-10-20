@@ -328,11 +328,11 @@ impl Engine {
     }
     pub fn validate(&self) -> Result<(), String> {
         self.settings.validate()?;
-        if self.selected_task.as_ref().is_some_and(|task| {
-            task.id.trim().is_empty()
-                || task.title.trim().is_empty()
-                || task.title.chars().count() > 120
-        }) {
+        if self
+            .selected_task
+            .as_ref()
+            .is_some_and(|task| task.id.trim().is_empty() || task.title.trim().is_empty())
+        {
             return Err("Invalid selected task in timer checkpoint.".into());
         }
         if let Some(a) = &self.active

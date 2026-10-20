@@ -374,9 +374,6 @@ fn validate_title(title: &str) -> Result<String, String> {
     if title.is_empty() {
         return Err("Task title cannot be empty.".into());
     }
-    if title.chars().count() > 120 {
-        return Err("Task title must be 120 characters or fewer.".into());
-    }
     Ok(title.to_owned())
 }
 
@@ -432,6 +429,11 @@ mod tests {
         );
         drop(store);
         std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn task_titles_have_no_length_limit() {
+        let long = "x".repeat(500);
+        assert_eq!(validate_title(&format!("  {long}  ")).unwrap(), long);
     }
     #[test]
     fn version_three_upgrade_clears_tasks_but_preserves_session_task_snapshots() {

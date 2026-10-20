@@ -80,8 +80,10 @@ main { padding: 24px; max-width: 1200px; width: 100%; margin: 0 auto; min-width:
 .mode-switch { padding: 4px; background: var(--soft); border-radius: 8px; display: flex; margin-bottom: 14px; }
 .mode-switch button { flex: 1; min-height: 36px; padding: 5px 8px; font-weight: 500; background: transparent; color: var(--muted); }
 .mode-switch button[aria-pressed=true] { background: var(--surface); color: var(--accent); }
-.task-select { display: grid; gap: 5px; min-width: 0; text-align: left; font-size: var(--text-caption); }
-.task-select select { width: 100%; min-width: 0; font-size: var(--text-body); }
+.task-select { display: flex; align-items: center; gap: 8px; min-width: 0; text-align: left; font-size: var(--text-caption); }
+.task-select-label { flex: none; white-space: nowrap; }
+.task-select select { flex: 1; min-width: 0; font-size: var(--text-body); }
+.task-new { flex: none; white-space: nowrap; min-height: 32px; padding: 4px 6px; background: transparent; color: var(--accent); font-size: var(--text-caption); font-weight: 600; }
 .active-task { text-align: left; font-size: var(--text-caption); color: var(--muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .active-task strong { color: var(--text); font-weight: 500; }
 .timer-face { position: relative; width: min(100%, 224px); aspect-ratio: 1; margin: 14px auto; border-radius: 50%; }
@@ -132,21 +134,19 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; f
 .column-done .task-column-title > i { background: var(--mint); }
 .task-count { margin-left: auto; color: var(--muted); font-size: var(--text-caption); }
 .task-column-list { display: grid; gap: 10px; }
-.task-item-card { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: grab; }
+.task-item-card { position: relative; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: grab; }
 .task-item-card:active { cursor: grabbing; }
-.task-card-title { display: flex; gap: 7px; align-items: flex-start; margin-bottom: 12px; }
+.task-card-title { display: flex; gap: 7px; align-items: flex-start; }
 .task-card-title strong { min-width: 0; overflow-wrap: anywhere; flex: 1; font-weight: 600; }
 .task-grip { color: var(--muted); cursor: grab; }
 .column-done .task-card-title strong { color: var(--mint); }
-.task-card-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.task-move-label { flex: 1 1 100px; min-width: 0; }
-.task-move-label select { width: 100%; font-size: var(--text-caption); min-height: 40px; padding: 6px; }
-.task-actions-menu { font-size: var(--text-caption); }
-.task-actions-menu.open { flex-basis: 100%; }
-.task-actions-toggle { background: transparent; color: var(--muted); font-size: var(--text-caption); min-height: 40px; font-weight: 500; padding: 6px; }
-.task-actions, .task-edit { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
-.task-actions { padding-top: 7px; }
-.task-actions button, .task-edit button { min-height: 40px; padding: 6px 9px; font-size: var(--text-caption); }
+.task-card-controls, .task-edit { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.task-card-controls button, .task-edit button { min-height: 40px; padding: 6px 9px; font-size: var(--text-caption); }
+.task-card-controls { position: absolute; top: 8px; right: 8px; gap: 2px; padding: 2px; border-radius: 8px; background: var(--surface); opacity: 0; transition: opacity .15s; }
+.task-item-card:hover .task-card-controls, .task-item-card:focus-within .task-card-controls { opacity: 1; }
+@media (hover: none) { .task-card-controls { opacity: 1; } }
+.task-card-controls button { background: transparent; border: 0; color: var(--muted); min-width: 28px; min-height: 28px; padding: 4px; border-radius: 6px; }
+.task-card-controls button.danger { color: var(--danger); }
 .task-edit input { width: 100%; min-width: 0; }
 .column-empty { padding: 16px 4px; color: var(--muted); font-size: var(--text-caption); }
 .completion-toast { display: flex; align-items: center; gap: 9px; margin-bottom: 20px; padding: 12px 15px; border-radius: 8px; background: var(--mint-soft); color: var(--mint); }
