@@ -11,7 +11,7 @@ Follow the [development guide](docs/development.md), then run `npm ci`.
 Run the checks below from the repository root before opening a pull request:
 
 ```sh
-npm run build && npm test && npm run test:ui
+npm run build:frontend && npm test && npm run test:ui
 cargo fmt --all --check
 cargo test --locked -p focus-core
 cargo test --locked -p pomodoro-desktop --lib

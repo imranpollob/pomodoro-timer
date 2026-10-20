@@ -51,7 +51,7 @@ jobs:
         run: npm ci
       - name: Frontend checks and tests
         run: |
-          npm run build
+          npm run build:frontend
           npm test
       - name: Browser UI tests
         if: runner.os == 'Linux'

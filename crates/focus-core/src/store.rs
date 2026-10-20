@@ -1,4 +1,4 @@
-use crate::{Engine, Record, Task};
+use crate::{Engine, Record, Task, TaskCompletionEvent, TaskStatus};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 
@@ -24,7 +24,7 @@ impl Store {
         let version: u32 = connection
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(|e| e.to_string())?;
-        if version > 3 {
+        if version > 4 {
             return Err("Database was created by a newer app; it was left intact.".into());
         }
         if version == 0 {
@@ -62,6 +62,23 @@ impl Store {
                 )
                 .map_err(|e| e.to_string())?;
         }
+        if version < 4 {
+            connection
+                .execute_batch(
+                    "BEGIN IMMEDIATE;
+                    ALTER TABLE tasks ADD COLUMN status TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo', 'in_progress', 'done'));
+                    DELETE FROM tasks;
+                    CREATE TABLE task_completion_events (
+                        id TEXT PRIMARY KEY,
+                        task_id TEXT NOT NULL,
+                        completed_unix_ms INTEGER NOT NULL
+                    );
+                    CREATE INDEX task_completion_events_completed_idx ON task_completion_events(completed_unix_ms);
+                    PRAGMA user_version=4;
+                    COMMIT;",
+                )
+                .map_err(|e| e.to_string())?;
+        }
         Ok(Self { connection })
     }
     pub fn create_task(&self, title: &str, now: u64) -> Result<Task, String> {
@@ -93,22 +110,45 @@ impl Store {
         self.task(id)?
             .ok_or_else(|| "Updated task could not be read back".into())
     }
-    pub fn set_task_completed(&self, id: &str, completed: bool, now: u64) -> Result<(), String> {
-        let changed = self
-            .connection
-            .execute(
-                "UPDATE tasks SET completed=?2, updated_unix_ms=?3 WHERE id=?1 AND deleted=0",
-                rusqlite::params![
-                    id,
-                    completed,
-                    i64::try_from(now).map_err(|e| e.to_string())?
-                ],
+    pub fn set_task_status(
+        &mut self,
+        id: &str,
+        status: TaskStatus,
+        engine: &Engine,
+        wall_now: u64,
+        tick_now: u64,
+    ) -> Result<Task, String> {
+        let wall_now = i64::try_from(wall_now).map_err(|e| e.to_string())?;
+        let checkpoint =
+            serde_json::to_string(&engine.checkpoint(tick_now)).map_err(|e| e.to_string())?;
+        let tx = self.connection.transaction().map_err(|e| e.to_string())?;
+        let old_status: Option<String> = tx
+            .query_row(
+                "SELECT status FROM tasks WHERE id=?1 AND deleted=0",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let old_status = old_status.ok_or_else(|| "Task no longer exists.".to_string())?;
+        if old_status != status.as_db_value() {
+            tx.execute(
+                "UPDATE tasks SET status=?2, updated_unix_ms=?3 WHERE id=?1 AND deleted=0",
+                params![id, status.as_db_value(), wall_now],
             )
             .map_err(|e| e.to_string())?;
-        if changed == 0 {
-            return Err("Task no longer exists.".into());
+            if status == TaskStatus::Done && old_status != "done" {
+                tx.execute(
+                    "INSERT INTO task_completion_events (id, task_id, completed_unix_ms) VALUES (?1, ?2, ?3)",
+                    params![uuid::Uuid::new_v4().to_string(), id, wall_now],
+                )
+                .map_err(|e| e.to_string())?;
+            }
         }
-        Ok(())
+        tx.execute("INSERT INTO app_state VALUES (1, ?1) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", [checkpoint]).map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        self.task(id)?
+            .ok_or_else(|| "Updated task could not be read back".into())
     }
     pub fn delete_task(
         &mut self,
@@ -135,22 +175,39 @@ impl Store {
     }
     pub fn task(&self, id: &str) -> Result<Option<Task>, String> {
         self.connection.query_row(
-            "SELECT id, title, completed, created_unix_ms, updated_unix_ms FROM tasks WHERE id=?1 AND deleted=0",
+            "SELECT id, title, status, created_unix_ms, updated_unix_ms FROM tasks WHERE id=?1 AND deleted=0",
             [id], task_from_row,
         ).optional().map_err(|e| e.to_string())
     }
     pub fn selectable_task(&self, id: &str) -> Result<Option<Task>, String> {
         self.connection.query_row(
-            "SELECT id, title, completed, created_unix_ms, updated_unix_ms FROM tasks WHERE id=?1 AND deleted=0 AND completed=0",
+            "SELECT id, title, status, created_unix_ms, updated_unix_ms FROM tasks WHERE id=?1 AND deleted=0 AND status!='done'",
             [id], task_from_row,
         ).optional().map_err(|e| e.to_string())
     }
     pub fn tasks(&self) -> Result<Vec<Task>, String> {
         let mut query = self.connection.prepare(
-            "SELECT id, title, completed, created_unix_ms, updated_unix_ms FROM tasks WHERE deleted=0 ORDER BY completed ASC, updated_unix_ms DESC, rowid DESC"
+            "SELECT id, title, status, created_unix_ms, updated_unix_ms FROM tasks WHERE deleted=0 ORDER BY CASE status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END, updated_unix_ms DESC, rowid DESC"
         ).map_err(|e| e.to_string())?;
         query
             .query_map([], task_from_row)
+            .map_err(|e| e.to_string())?
+            .map(|row| row.map_err(|e| e.to_string()))
+            .collect()
+    }
+    pub fn task_completion_events(&self) -> Result<Vec<TaskCompletionEvent>, String> {
+        let mut query = self
+            .connection
+            .prepare("SELECT id, task_id, completed_unix_ms FROM task_completion_events ORDER BY completed_unix_ms ASC, rowid ASC")
+            .map_err(|e| e.to_string())?;
+        query
+            .query_map([], |row| {
+                Ok(TaskCompletionEvent {
+                    id: row.get(0)?,
+                    task_id: row.get(1)?,
+                    completed_unix_ms: u64::try_from(row.get::<_, i64>(2)?).unwrap_or(0),
+                })
+            })
             .map_err(|e| e.to_string())?
             .map(|row| row.map_err(|e| e.to_string()))
             .collect()
@@ -264,10 +321,13 @@ impl Store {
         })
         .collect()
     }
-    pub fn clear_sessions(&self) -> Result<(), String> {
-        self.connection
-            .execute_batch("DELETE FROM sessions;")
-            .map_err(|e| e.to_string())
+    pub fn clear_reports(&mut self) -> Result<(), String> {
+        let tx = self.connection.transaction().map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM sessions", [])
+            .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM task_completion_events", [])
+            .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
     }
 
     pub fn daily_totals(
@@ -321,10 +381,16 @@ fn validate_title(title: &str) -> Result<String, String> {
 }
 
 fn task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
+    let status = match row.get::<_, String>(2)?.as_str() {
+        "todo" => TaskStatus::Todo,
+        "in_progress" => TaskStatus::InProgress,
+        "done" => TaskStatus::Done,
+        _ => return Err(rusqlite::Error::InvalidQuery),
+    };
     Ok(Task {
         id: row.get(0)?,
         title: row.get(1)?,
-        completed: row.get(2)?,
+        status,
         created_unix_ms: u64::try_from(row.get::<_, i64>(3)?).unwrap_or(0),
         updated_unix_ms: u64::try_from(row.get::<_, i64>(4)?).unwrap_or(0),
     })
@@ -368,6 +434,39 @@ mod tests {
         std::fs::remove_file(path).unwrap();
     }
     #[test]
+    fn version_three_upgrade_clears_tasks_but_preserves_session_task_snapshots() {
+        let path = std::env::temp_dir().join(format!(
+            "pomodoro-v3-upgrade-{}.sqlite3",
+            uuid::Uuid::new_v4()
+        ));
+        let connection = Connection::open(&path).unwrap();
+        connection.execute_batch("CREATE TABLE sessions (id TEXT PRIMARY KEY, phase TEXT NOT NULL, started_unix_ms INTEGER NOT NULL, active_ms INTEGER NOT NULL CHECK(active_ms >= 0), outcome TEXT NOT NULL, task_id TEXT, task_title TEXT);
+            CREATE TABLE app_state (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);
+            CREATE TABLE preferences (key TEXT PRIMARY KEY, payload TEXT NOT NULL);
+            CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, created_unix_ms INTEGER NOT NULL, updated_unix_ms INTEGER NOT NULL);
+            PRAGMA user_version=3;").unwrap();
+        let task_id = uuid::Uuid::new_v4().to_string();
+        let session_id = uuid::Uuid::new_v4().to_string();
+        connection.execute("INSERT INTO tasks (id, title, completed, created_unix_ms, updated_unix_ms) VALUES (?1, 'Old task', 1, 1, 2)", [&task_id]).unwrap();
+        connection.execute("INSERT INTO sessions (id, phase, started_unix_ms, active_ms, outcome, task_id, task_title) VALUES (?1, '\"focus\"', 3, 60000, 'completed', ?2, 'Old task')", params![session_id, task_id]).unwrap();
+        drop(connection);
+
+        let store = Store::open(&path).unwrap();
+        assert!(store.tasks().unwrap().is_empty());
+        let session = store.records_between(0, 10).unwrap().remove(0);
+        assert_eq!(session.task.unwrap().title, "Old task");
+        assert!(store.task_completion_events().unwrap().is_empty());
+        assert_eq!(
+            store
+                .connection
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
+                .unwrap(),
+            4
+        );
+        drop(store);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
     fn completion_and_checkpoint_commit_once() {
         let mut store = Store::open(Path::new(":memory:")).unwrap();
         let mut e = Engine::default();
@@ -379,8 +478,8 @@ mod tests {
         assert!(!store.load().unwrap().has_active());
     }
     #[test]
-    fn clear_sessions_removes_records_and_totals() {
-        let store = Store::open(Path::new(":memory:")).unwrap();
+    fn clear_reports_removes_sessions_and_task_completion_events() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
         store
             .connection
             .execute(
@@ -390,8 +489,10 @@ mod tests {
             .unwrap();
         assert_eq!(store.records_between(0, 2000).unwrap().len(), 1);
         assert_eq!(store.daily_totals(0, 2000).unwrap().pomodoro_sessions, 1);
-        store.clear_sessions().unwrap();
+        store.connection.execute("INSERT INTO task_completion_events (id, task_id, completed_unix_ms) VALUES ('event', 'task', 1500)", []).unwrap();
+        store.clear_reports().unwrap();
         assert!(store.records_between(0, 2000).unwrap().is_empty());
+        assert!(store.task_completion_events().unwrap().is_empty());
         let totals = store.daily_totals(0, 2000).unwrap();
         assert_eq!(totals.pomodoro_ms, 0);
         assert_eq!(totals.pomodoro_sessions, 0);
@@ -433,5 +534,45 @@ mod tests {
             .execute("INSERT INTO app_state VALUES (1, '{bad')", [])
             .unwrap();
         assert!(store.load().is_err());
+    }
+
+    #[test]
+    fn task_status_changes_record_each_entry_into_done_once() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        let engine = Engine::default();
+        let task = store.create_task("Ship board", 100).unwrap();
+        assert_eq!(task.status, TaskStatus::Todo);
+        let in_progress = store
+            .set_task_status(&task.id, TaskStatus::InProgress, &engine, 200, 0)
+            .unwrap();
+        assert_eq!(in_progress.status, TaskStatus::InProgress);
+        assert!(store.task_completion_events().unwrap().is_empty());
+
+        store
+            .set_task_status(&task.id, TaskStatus::Done, &engine, 300, 0)
+            .unwrap();
+        store
+            .set_task_status(&task.id, TaskStatus::Done, &engine, 400, 0)
+            .unwrap();
+        store
+            .set_task_status(&task.id, TaskStatus::Todo, &engine, 500, 0)
+            .unwrap();
+        store
+            .set_task_status(&task.id, TaskStatus::Done, &engine, 600, 0)
+            .unwrap();
+        let events = store.task_completion_events().unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.completed_unix_ms)
+                .collect::<Vec<_>>(),
+            vec![300, 600]
+        );
+        assert_eq!(
+            store.task(&task.id).unwrap().unwrap().status,
+            TaskStatus::Done
+        );
+        assert!(store.selectable_task(&task.id).unwrap().is_none());
     }
 }

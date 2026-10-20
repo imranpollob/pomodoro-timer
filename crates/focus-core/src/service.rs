@@ -1,6 +1,6 @@
 //! One serialized owner for timer commands, checkpoints and completion records.
 use crate::{
-    Command, Engine, Record, Task, TimerView,
+    Command, Engine, Record, Task, TaskCompletionEvent, TaskStatus, TimerView,
     store::{DailyTotals, Store},
 };
 use serde::Serialize;
@@ -58,7 +58,8 @@ enum Request {
     ReadTasks(mpsc::Sender<Result<Vec<Task>, String>>),
     CreateTask(String, mpsc::Sender<Result<Task, String>>),
     RenameTask(String, String, mpsc::Sender<Result<Task, String>>),
-    CompleteTask(String, bool, mpsc::Sender<Result<(), String>>),
+    SetTaskStatus(String, TaskStatus, mpsc::Sender<Result<Task, String>>),
+    TaskCompletionEvents(mpsc::Sender<Result<Vec<TaskCompletionEvent>, String>>),
     DeleteTask(String, mpsc::Sender<Result<(), String>>),
     DailyTotals(u64, u64, mpsc::Sender<Result<DailyTotals, String>>),
     ReportRecords(u64, u64, mpsc::Sender<Result<Vec<Record>, String>>),
@@ -126,12 +127,48 @@ impl TimerService {
                             let _ = reply.send(store.rename_task(&id, &title, clock.unix_ms()));
                             continue;
                         }
-                        Some(Request::CompleteTask(id, completed, reply)) => {
-                            let _ = reply.send(store.set_task_completed(
+                        Some(Request::SetTaskStatus(id, status, reply)) => {
+                            if pending.is_some() {
+                                let _ = reply.send(Err(
+                                    "Retry the pending session save before changing task status."
+                                        .into(),
+                                ));
+                                continue;
+                            }
+                            let mut candidate = engine.clone();
+                            if status == TaskStatus::Done {
+                                candidate.clear_selected_task_if(&id);
+                            }
+                            match store.set_task_status(
                                 &id,
-                                completed,
+                                status,
+                                &candidate,
                                 clock.unix_ms(),
-                            ));
+                                clock.monotonic_ms(),
+                            ) {
+                                Ok(task) => {
+                                    engine = candidate;
+                                    revision += 1;
+                                    let state = Snapshot {
+                                        timer: engine.view(clock.monotonic_ms()),
+                                        revision,
+                                        recovered,
+                                        pending_save: pending.is_some(),
+                                        last_error: last_error.clone(),
+                                        records: records.clone(),
+                                        interruption: interruption.clone(),
+                                    };
+                                    publish(state);
+                                    let _ = reply.send(Ok(task));
+                                }
+                                Err(error) => {
+                                    let _ = reply.send(Err(error));
+                                }
+                            }
+                            continue;
+                        }
+                        Some(Request::TaskCompletionEvents(reply)) => {
+                            let _ = reply.send(store.task_completion_events());
                             continue;
                         }
                         Some(Request::DeleteTask(id, reply)) => {
@@ -160,7 +197,7 @@ impl TimerService {
                             continue;
                         }
                         Some(Request::ResetReports(reply)) => {
-                            match store.clear_sessions() {
+                            match store.clear_reports() {
                                 Ok(()) => {
                                     records.clear();
                                     revision += 1;
@@ -433,10 +470,19 @@ impl TimerService {
             .recv_timeout(Duration::from_secs(10))
             .map_err(|e| e.to_string())?
     }
-    pub fn complete_task(&self, id: String, completed: bool) -> Result<(), String> {
+    pub fn set_task_status(&self, id: String, status: TaskStatus) -> Result<Task, String> {
         let (send, receive) = mpsc::channel();
         self.sender
-            .send(Request::CompleteTask(id, completed, send))
+            .send(Request::SetTaskStatus(id, status, send))
+            .map_err(|e| e.to_string())?;
+        receive
+            .recv_timeout(Duration::from_secs(10))
+            .map_err(|e| e.to_string())?
+    }
+    pub fn task_completion_events(&self) -> Result<Vec<TaskCompletionEvent>, String> {
+        let (send, receive) = mpsc::channel();
+        self.sender
+            .send(Request::TaskCompletionEvents(send))
             .map_err(|e| e.to_string())?;
         receive
             .recv_timeout(Duration::from_secs(10))
@@ -507,6 +553,11 @@ mod tests {
             |_| {},
         )
         .unwrap();
+        let task = service.create_task("Finish the board".into()).unwrap();
+        service
+            .set_task_status(task.id.clone(), TaskStatus::Done)
+            .unwrap();
+        assert_eq!(service.task_completion_events().unwrap().len(), 1);
         service.command(Command::Toggle).unwrap();
         clock.0.store(60_000, Ordering::SeqCst);
         let finished = service.command(Command::Finish).unwrap();
@@ -515,6 +566,43 @@ mod tests {
         assert!(reset.records.is_empty());
         assert!(service.report_records(0, 5000).unwrap().is_empty());
         assert_eq!(service.daily_totals(0, 5000).unwrap().pomodoro_sessions, 0);
+        assert!(service.task_completion_events().unwrap().is_empty());
+        assert_eq!(service.tasks().unwrap()[0].status, TaskStatus::Done);
+    }
+
+    #[test]
+    fn completing_selected_task_clears_next_selection_but_keeps_active_snapshot() {
+        let clock = Arc::new(FakeClock(AtomicU64::new(0)));
+        let service = TimerService::spawn(
+            Store::open(Path::new(":memory:")).unwrap(),
+            clock,
+            |_| {},
+            |_| {},
+        )
+        .unwrap();
+        let task = service
+            .create_task("Write the release notes".into())
+            .unwrap();
+        service
+            .command(Command::SelectTask {
+                task: Some(crate::TaskReference {
+                    id: task.id.clone(),
+                    title: task.title.clone(),
+                }),
+            })
+            .unwrap();
+        let started = service.command(Command::Toggle).unwrap();
+        assert_eq!(
+            started.timer.active_task.as_ref().unwrap().title,
+            task.title
+        );
+        service.set_task_status(task.id, TaskStatus::Done).unwrap();
+        let after = service.snapshot().unwrap();
+        assert!(after.timer.selected_task.is_none());
+        assert_eq!(
+            after.timer.active_task.as_ref().unwrap().title,
+            "Write the release notes"
+        );
     }
 
     #[test]

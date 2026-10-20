@@ -12,27 +12,27 @@ Install the [Tauri native prerequisites](https://v2.tauri.app/start/prerequisite
 
 ```text
 npm ci
-npm run tauri -- dev
+npm run dev
 ```
 
-`npm run dev` alone opens the frontend with a desktop-connection message; production code never substitutes a browser timer for the Rust authority.
+`npm run dev` launches the Tauri desktop app. Tauri starts the Vite frontend through the `dev:frontend` lifecycle script; production code never substitutes a browser timer for the Rust authority.
 
 ### Seed demo data for UI review
 
-To inspect Tasks, rolling 7-day/30-day and custom Reports, and settings, run the seeder while the app is closed. It adds four demo tasks and two months of focus, short/long break, stopwatch, completed, skipped, and interrupted sessions to the selected profile. Existing tasks, sessions, settings, and checkpoints are kept. Stable IDs make repeated runs safe and avoid duplicate demo records. On Windows, macOS, and Linux the default is the Tauri app-data directory; `POMODORO_DATA_DIR` or `--profile PATH` selects another profile. Restart the app after seeding so tasks and reports reload.
+To inspect the task board, session reports, task-completion heatmap, and settings, run the seeder while the app is closed. It adds four demo tasks, task-completion events, and two months of focus, short/long break, stopwatch, completed, skipped, and interrupted sessions to the selected profile. Existing sessions, settings, and checkpoints are kept; stable IDs make repeated runs safe and avoid duplicate demo records. On Windows, macOS, and Linux the default is the Tauri app-data directory; `POMODORO_DATA_DIR` or `--profile PATH` selects another profile. Restart the app after seeding so tasks and reports reload.
 
 Windows PowerShell, from the repo root:
 
 ```powershell
 python scripts/seed_demo_profile.py
-npm run tauri -- dev
+npm run dev
 ```
 
 macOS/Linux, from the repo root:
 
 ```sh
 python3 scripts/seed_demo_profile.py
-npm run tauri -- dev
+npm run dev
 ```
 
 Pass `--profile PATH` to seed a different profile. Close the app before seeding to avoid competing writers.
@@ -53,7 +53,7 @@ cd C:\Users\imran\Coding\pomodoro-timer
 rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
 cargo --version
 npm ci
-npm run tauri -- dev
+npm run dev
 ```
 
 Use your checkout's path if different. Install [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) if Windows reports that it is missing. A `link.exe not found` or Windows SDK error means the C++ workload is incomplete; installing Rust alone does not supply these tools. Rust installed inside WSL is separate from native Windows Rust.
@@ -65,7 +65,7 @@ Use your checkout's path if different. Install [WebView2 Runtime](https://develo
 - Settings save automatically shortly after each edit; invalid timer values are skipped. On Windows and Linux, closing the main window hides it to the system tray by default while the timer keeps running; left-click the tray icon or choose Open Pomodoro to restore it, and Exit to quit. The close behavior can be changed in Settings. On macOS, closing the main window always keeps the app running; Dock-icon clicks reopen it, and Cmd+Q or Quit exits. macOS Settings offer Show in menu bar (default on) and Hide Dock icon (default off, requires the menu bar icon so the app stays reachable) instead of the close-to-tray option.
 - One serialized Rust service processes UI/tray commands. Window subscriptions accept monotonically increasing revisions. No frontend timer decrements session duration.
 - SQLite transactions save completed/interrupted/skipped sessions and paused checkpoints together. Checkpoints occur on transitions and every 15 seconds while running. Restart restores paused and excludes time while the process was absent. A crash can lose active time since the last checkpoint.
-- Failed saves freeze active time, block replacement sessions, and expose retry. Preferences apply to future sessions. The Tasks view supports add/edit/complete/remove; a task can be selected for the next session and its title is saved with the session. Removing a task preserves its title in existing session history.
+- Failed saves freeze active time, block replacement sessions, and expose retry. Preferences apply to future sessions. The Tasks view supports a To do/In progress/Done board, drag-and-drop, keyboard status changes, rename, and remove; To do and In progress tasks can be selected for the next session and their titles are saved with the session. Removing a task preserves its title in existing session history.
 - The timer page shows a local-calendar-day total split between Pomodoro and stopwatch time and session counts. Reports is the only session-history page and includes all saved records in the selected range.
 - Reports open on Today and provide Last 7 days / Last 30 days presets (the preset matching the selected range is highlighted) and custom local-date ranges, aggregate and per-day focus summaries, and session rows with task titles and outcomes. CSV export and per-row Details actions are removed. A confirmed Reset reports action in Settings deletes every recorded session. An opt-in setting auto-starts the next focus/break only after natural timer completion; manual finish, skip, and stopwatch remain manual.
 - Appearance settings are a light/dark theme and compact-mode background opacity. All four pages use shared typography and concise content titles. Promotional headers and sidebar slogans are removed; Compact mode opens from the timer page.
@@ -73,12 +73,12 @@ Use your checkout's path if different. Install [WebView2 Runtime](https://develo
 - Windows suspend/lock broadcasts pause active work using the notification's timestamp; wake/unlock requires explicit resume. The listener bounds its checkpoint wait to one second. Failed or slow writes retain the existing retry/recovery behavior. Native macOS/Linux suspend adapters are not included in v1.0.0.
 - SQLite stores desktop preferences, compact pinning, and debounced main/compact placement. Placement is clamped to connected monitor work areas on Windows. The compact strip keeps a fixed text size and grows automatically for long stopwatch hours; manual edge resizing is disabled. The compact strip has no native shadow to preserve its height on Windows.
 
-Set `POMODORO_DATA_DIR` **before launching** to use an isolated profile. The default is Tauri's app-data directory for the app identifier. `pomodoro.sqlite3` and its WAL/SHM sidecars belong to this profile. Back up the whole profile with the app closed. Schema 3 upgrades earlier Tauri schemas transactionally and retains existing sessions/checkpoints. Legacy Python data and old JSONBin data are not imported or modified; see [MIGRATION.md](../MIGRATION.md) for the manual steps.
+Set `POMODORO_DATA_DIR` **before launching** to use an isolated profile. The default is Tauri's app-data directory for the app identifier. `pomodoro.sqlite3` and its WAL/SHM sidecars belong to this profile. Back up the whole profile with the app closed. Schema 4 clears existing task rows once when upgrading and preserves saved sessions, task-title snapshots, settings, and checkpoints; completion events are stored separately. Legacy Python data and old JSONBin data are not imported or modified; see [MIGRATION.md](../MIGRATION.md) for the manual steps.
 
 ## Verify and build
 
 ```text
-npm run build
+npm run build:frontend
 npm test
 npx playwright install chromium
 npm run test:ui

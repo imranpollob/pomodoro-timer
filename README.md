@@ -25,8 +25,8 @@ Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), Ru
 
 ```sh
 npm ci
-npm run tauri -- dev      # run the app
-npm run tauri -- build -- --locked  # build for the current operating system
+npm run dev      # run the app
+npm run build    # build for the current operating system
 ```
 
 The build command packages for the current operating system; it does not create Windows, macOS and Linux packages together. See the [development guide](docs/development.md#local-packages) for local `.dmg`, `.exe` and `.deb` instructions.

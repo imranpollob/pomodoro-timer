@@ -1,12 +1,13 @@
 import { test, expect, type Page } from '@playwright/test';
 
-async function mockDesktop(page: Page, options: { seconds: number; emptyReports?: boolean; recovered?: boolean; interruption?: string | null; opacity?: number; lastRecord?: boolean; platform?: string } = { seconds: 1500 }) {
+async function mockDesktop(page: Page, options: { seconds: number; emptyReports?: boolean; recovered?: boolean; interruption?: string | null; opacity?: number; lastRecord?: boolean; platform?: string; failTaskStatusOnce?: boolean; taskTitle?: string } = { seconds: 1500 }) {
   await page.addInitScript(options => {
     (window as unknown as { isTauri: boolean }).isTauri = true;
     const callbacks = new Map<number, (value: unknown) => void>();
     let callbackId = 0;
     const state = {
       phase: 'focus', status: 'idle', display_seconds: options.seconds, active_ms: 0, duration_ms: 1_500_000,
+      selected_task: null as { id: string; title: string } | null, active_task: null as { id: string; title: string } | null,
       cycle: 1, cycle_interval: 4, revision: 0, recovered: options.recovered ?? false, pending_save: false, last_error: null, interruption: options.interruption ?? null,
       settings: { focus_minutes: 25, short_break_minutes: 5, long_break_minutes: 15, long_break_interval: 4, sound_enabled: false, auto_start_next: false }, records: options.lastRecord ? [{ id: 'session-9', phase: 'focus', started_unix_ms: Date.now(), active_ms: 1_500_000, outcome: 'completed', task: { id: 'task-1', title: 'Write tests' } }] : [],
     };
@@ -19,8 +20,19 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
       { id: 'session-1', phase: 'focus', started_unix_ms: started, active_ms: 1_500_000, outcome: 'completed', task: { id: 'task-1', title: 'Write tests' } },
       { id: 'session-2', phase: 'stopwatch', started_unix_ms: started + 1_800_000, active_ms: 600_000, outcome: 'finished', task: null },
     ];
+    const tasks = [
+      { id: 'task-1', title: options.taskTitle ?? 'Write tests', status: 'todo', created_unix_ms: started, updated_unix_ms: started },
+      { id: 'task-2', title: 'Review requirements', status: 'done', created_unix_ms: started, updated_unix_ms: started },
+    ];
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); yesterday.setHours(12, 0, 0, 0);
+    const today = new Date(); today.setHours(12, 0, 0, 0);
+    const taskCompletionEvents = [
+      { id: 'event-1', task_id: 'task-2', completed_unix_ms: yesterday.getTime() },
+      { id: 'event-2', task_id: 'task-2', completed_unix_ms: today.getTime() },
+    ];
     const listeners = new Map<string, number>();
     let finishCount = 0;
+    let failTaskStatus = options.failTaskStatusOnce ?? false;
     (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
       transformCallback(callback: (value: unknown) => void) { callbacks.set(++callbackId, callback); return callbackId; },
       unregisterCallback(id: number) { callbacks.delete(id); },
@@ -36,10 +48,21 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
         if (command === 'get_desktop_state') return structuredClone(desktop);
         if (command === 'timer_defaults') return { focus_minutes: 25, short_break_minutes: 5, long_break_minutes: 15, long_break_interval: 4, sound_enabled: true, auto_start_next: false };
         if (command === 'desktop_defaults') return { volume: 60, theme: 'dark', opacity_percent: 100, pinned: true, notifications: true, close_to_tray: true, menu_bar_visible: true, dock_hidden: false };
-        if (command === 'list_tasks') return [{ id: 'task-1', title: 'Write tests', completed: false }, { id: 'task-2', title: 'Review requirements', completed: true }];
+        if (command === 'list_tasks') return structuredClone(tasks);
+        if (command === 'task_completion_events') return structuredClone(taskCompletionEvents);
+        if (command === 'rename_task') { const task = tasks.find(item => item.id === args.id)!; task.title = args.title; return structuredClone(task); }
+        if (command === 'delete_task') { tasks.splice(tasks.findIndex(item => item.id === args.id), 1); return; }
+        if (command === 'set_task_status') {
+          if (failTaskStatus) { failTaskStatus = false; throw new Error('Simulated database write failure'); }
+          const task = tasks.find(item => item.id === args.id);
+          if (!task) throw new Error('Task no longer exists.');
+          if (task.status !== 'done' && args.status === 'done') taskCompletionEvents.push({ id: `event-${taskCompletionEvents.length + 1}`, task_id: task.id, completed_unix_ms: Date.now() });
+          task.status = args.status; task.updated_unix_ms = Date.now();
+          return structuredClone(task);
+        }
         if (command === 'daily_totals' && options.emptyReports) return { pomodoro_ms: 0, stopwatch_ms: 0, pomodoro_sessions: 0, stopwatch_sessions: 0 };
         if (command === 'daily_totals') { const pomo = reportRows.filter(row => row.phase === 'focus'); const sw = reportRows.filter(row => row.phase === 'stopwatch'); const sum = (rows: { active_ms: number }[]) => rows.reduce((total, row) => total + row.active_ms, 0); return { pomodoro_ms: sum(pomo), stopwatch_ms: sum(sw), pomodoro_sessions: pomo.length, stopwatch_sessions: sw.length }; }
-        if (command === 'reset_reports') { reportRows.length = 0; state.records = []; state.revision++; return structuredClone(state); }
+        if (command === 'reset_reports') { reportRows.length = 0; taskCompletionEvents.length = 0; state.records = []; state.revision++; return structuredClone(state); }
         if (command === 'report_records') { (window as any).__reportRange = args; return options.emptyReports ? [] : structuredClone(reportRows); }
         if (command === 'save_desktop_preferences') {
           desktop.preferences = args.preferences; desktop.revision++;
@@ -49,8 +72,12 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
         }
         if (command === 'timer_command') {
           const action = args.command;
-          if (action.type === 'toggle') state.status = state.status === 'running' ? 'paused' : 'running';
-          if (action.type === 'finish') { state.status = 'idle'; state.active_ms = 0; finishCount++;
+          if (action.type === 'select_task') state.selected_task = action.task;
+          if (action.type === 'toggle') {
+            if (state.status === 'idle') state.active_task = structuredClone(state.selected_task);
+            state.status = state.status === 'running' ? 'paused' : 'running';
+          }
+          if (action.type === 'finish') { state.status = 'idle'; state.active_ms = 0; state.active_task = null; finishCount++;
             const record = { id: `session-mock-${finishCount}`, phase: 'focus', started_unix_ms: Date.now(), active_ms: 60_000, outcome: 'finished', task: { id: 'task-9', title: 'Fresh mock task' } };
             state.records.unshift(record); reportRows.unshift({ ...record }); }
           if (action.type === 'set_mode') { state.phase = action.mode; state.display_seconds = action.mode === 'stopwatch' ? 0 : 1500; }
@@ -119,7 +146,7 @@ test('compact options button opens the menu at a fixed spot and right-click does
 test('timer preferences autosave and invalid values are skipped', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const timerCard = page.locator('.settings-card', { hasText: 'Timer preferences' });
+  const timerCard = page.locator('.timer-settings');
   await page.getByLabel('Focus duration').fill('0');
   await page.getByRole('button', { name: 'Timer', exact: true }).click();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -215,7 +242,7 @@ test('each page uses shared typography and fits the minimum window width in both
 test('desktop preferences autosave pinning, tray, notifications and appearance', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const desktopCard = page.locator('.settings-card', { hasText: 'Desktop preferences' });
+  const desktopCard = page.locator('.desktop-settings');
   await expect(page.getByLabel('Close to system tray instead of exiting')).toBeChecked();
   await expect(page.getByLabel('Send completion notifications')).toBeChecked();
   await page.getByLabel('Appearance theme').selectOption('light');
@@ -282,8 +309,8 @@ test('removed text-size settings stay absent and opacity targets compact', async
 test('settings restore buttons bring back defaults', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const timerCard = page.locator('.settings-card', { hasText: 'Timer preferences' });
-  const desktopCard = page.locator('.settings-card', { hasText: 'Desktop preferences' });
+  const timerCard = page.locator('.timer-settings');
+  const desktopCard = page.locator('.desktop-settings');
   const dialog = page.getByRole('dialog');
   await page.getByLabel('Focus duration').fill('30');
   await expect(timerCard.getByRole('status')).toHaveText('Saved');
@@ -316,7 +343,7 @@ test('settings checkboxes only toggle on their own text', async ({ page }) => {
   await label.scrollIntoViewIfNeeded();
   await label.click();
   await expect(page.getByLabel('Send completion notifications')).not.toBeChecked();
-  const cardBox = await page.locator('.settings-card', { hasText: 'Desktop preferences' }).boundingBox();
+  const cardBox = await page.locator('.sound-settings').boundingBox();
   const labelBox = await label.boundingBox();
   await page.mouse.click(cardBox!.x + cardBox!.width - 30, labelBox!.y + labelBox!.height / 2);
   await expect(page.getByLabel('Send completion notifications')).not.toBeChecked();
@@ -381,6 +408,34 @@ test('report table leads with start time and sorts newest first', async ({ page 
   await expect(rows.nth(1).locator('td').nth(2)).toHaveText('Write tests');
 });
 
+test('tasks move across the board and completion feedback updates the report heatmap', async ({ page }) => {
+  await mockDesktop(page); await page.goto('/');
+  await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+  await page.screenshot({ path: 'test-results/tasks-board.png', fullPage: true });
+  const task = page.locator('.task-item-card').filter({ hasText: 'Write tests' });
+  await task.locator('.task-card-title').dragTo(page.locator('.column-in_progress'));
+  await expect(page.locator('.column-in_progress')).toContainText('Write tests');
+  await page.getByRole('button', { name: 'Timer', exact: true }).click();
+  await expect(page.getByRole('option', { name: /Write tests · In progress/ })).toBeAttached();
+  await expect(page.getByRole('option', { name: /Review requirements/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+  const move = page.getByRole('combobox', { name: 'Move Write tests' });
+  await move.focus(); await page.keyboard.press('d');
+  await expect(move).toHaveValue('done');
+  await expect(page.locator('.column-done')).toContainText('Write tests');
+  await expect(page.getByRole('status')).toContainText('Nice work!');
+  await page.getByRole('button', { name: 'Reports', exact: true }).click();
+  await expect(page.getByText('Last three months · 3 completions')).toBeVisible();
+  await expect(page.locator('.streak-card strong')).toHaveText('2');
+  const heatmap = page.getByRole('group', { name: 'Task completions over the last three months' });
+  await expect(heatmap).toBeVisible();
+  const day = heatmap.locator('.heatmap-cell[aria-label]').first();
+  await day.focus(); await expect(day).toBeFocused();
+  await page.screenshot({ path: 'test-results/task-reports.png', fullPage: true });
+  await page.getByRole('button', { name: 'Timer', exact: true }).click();
+  await expect(page.getByRole('option', { name: /Write tests/ })).toHaveCount(0);
+});
+
 test('settings reset reports clears recorded sessions everywhere', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
@@ -388,10 +443,11 @@ test('settings reset reports clears recorded sessions everywhere', async ({ page
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Reset reports', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog).toContainText('Delete every recorded session');
+  await expect(dialog).toContainText('Delete every recorded session and task completion');
   await dialog.getByRole('button', { name: 'Reset reports' }).click();
   await page.getByRole('button', { name: 'Reports', exact: true }).click();
   await expect(page.getByText('No sessions in this range')).toBeVisible();
+  await expect(page.locator('.streak-card strong')).toHaveText('0');
   await page.getByRole('button', { name: 'Timer', exact: true }).click();
   await expect(page.getByText('No sessions yet.')).toBeVisible();
   await expect(page.locator('.summary-card .summary-row').first()).toContainText('0 min · 0');
@@ -408,7 +464,7 @@ test('reports tab and page use the chart icon', async ({ page }) => {
 test('macOS settings show menu bar and dock options instead of tray close', async ({ page }) => {
   await mockDesktop(page, { seconds: 1500, platform: 'macos' }); await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const desktopCard = page.locator('.settings-card', { hasText: 'Desktop preferences' });
+  const desktopCard = page.locator('.desktop-settings');
   await expect(page.getByLabel('Show in menu bar')).toBeChecked();
   const dock = page.getByLabel('Hide Dock icon');
   await expect(dock).not.toBeChecked();
@@ -432,4 +488,112 @@ test('Linux settings show tray close and desktop notification hint', async ({ pa
   await expect(page.getByText("your Linux desktop's notification settings")).toBeVisible();
   await expect(page.getByText('Windows notification settings')).toHaveCount(0);
   await expect(page.getByLabel('Show in menu bar')).toHaveCount(0);
+});
+
+test('timer controls stay inside the minimum window in both themes and all timer states', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, taskTitle: 'Review the release notes and confirm keyboard access for every control. '.repeat(2).slice(0, 120) }); await page.goto('/');
+  await page.getByLabel('Task for the next session').selectOption('task-1');
+  for (const theme of ['dark', 'light']) {
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByLabel('Appearance theme').selectOption(theme);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await page.getByRole('button', { name: 'Timer', exact: true }).click();
+    await page.setViewportSize({ width: 660, height: 520 });
+    for (const label of ['Start focus', 'Pause', 'Resume']) {
+      const button = page.getByRole('button', { name: label, exact: true });
+      await expect(button).toBeInViewport({ ratio: 1 });
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(660);
+      if (label !== 'Start focus') await expect(page.getByRole('button', { name: 'Finish', exact: true })).toBeInViewport({ ratio: 1 });
+      await button.click();
+    }
+    await page.getByRole('button', { name: 'Finish', exact: true }).click();
+    await page.getByRole('button', { name: 'Finish and save', exact: true }).click();
+    await page.screenshot({ path: `test-results/minimum-timer-${theme}.png` });
+  }
+});
+
+test('narrow task boards expose every status without horizontal scrolling', async ({ page }) => {
+  await mockDesktop(page); await page.goto('/');
+  await page.setViewportSize({ width: 660, height: 520 });
+  await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+  expect(await page.locator('.task-board').evaluate(element => element.scrollWidth === element.clientWidth)).toBe(true);
+  for (const label of ['To do', 'In progress', 'Done']) {
+    const heading = page.getByRole('heading', { name: label, exact: true });
+    await heading.scrollIntoViewIfNeeded();
+    await expect(heading).toBeInViewport({ ratio: 1 });
+  }
+  await page.screenshot({ path: 'test-results/minimum-task-board.png', fullPage: true });
+});
+
+test('a rejected task status stays persisted and can be retried with keyboard focus preserved', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, failTaskStatusOnce: true }); await page.goto('/');
+  await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+  const move = page.getByRole('combobox', { name: 'Move Write tests' });
+  await move.focus();
+  await move.selectOption('done');
+  await expect(page.getByRole('alert')).toContainText('Simulated database write failure');
+  await expect(move).toHaveValue('todo');
+  await expect(move).toBeFocused();
+  await expect(page.locator('.column-todo')).toContainText('Write tests');
+  await move.selectOption('done');
+  await expect(page.locator('.column-done')).toContainText('Write tests');
+  await expect(move).toHaveValue('done');
+  await expect(move).toBeFocused();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Reports', exact: true }).click();
+  await expect(page.getByText('Last three months · 3 completions')).toBeVisible();
+});
+
+test('task Actions supports keyboard editing and confirmed removal', async ({ page }) => {
+  await mockDesktop(page); await page.goto('/');
+  await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
+  const actions = page.getByRole('button', { name: 'Actions for Write tests', exact: true });
+  await actions.focus(); await actions.press('Enter');
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Edit task title' }).fill('Review the release');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: 'Actions for Review the release', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('Saved sessions will keep its title.');
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.locator('.task-card-title')).toContainText(['Review the release', 'Review requirements']);
+  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Move Review the release' })).toHaveCount(0);
+});
+
+test('reports roll forward after midnight and refresh on resume without changing custom dates', async ({ page }) => {
+  await page.clock.install({ time: new Date(2026, 9, 20, 12) });
+  await mockDesktop(page); await page.goto('/');
+  await page.getByRole('button', { name: 'Reports', exact: true }).click();
+  await expect(page.locator('.streak-card strong')).toHaveText('2');
+  await page.clock.setSystemTime(new Date(2026, 9, 22, 12));
+  await page.clock.fastForward(30_000);
+  await expect(page.locator('.heatmap-cell[aria-label]').last()).toHaveAttribute('aria-label', /October 22, 2026/);
+  await expect(page.locator('.streak-card strong')).toHaveText('0');
+  await expect(page.getByLabel('Report start date')).toHaveValue('2026-10-22');
+  await expect(page.getByRole('button', { name: 'Today', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByLabel('Report start date').fill('2026-10-01');
+  await page.getByLabel('Report end date').fill('2026-10-05');
+  await page.getByRole('button', { name: 'Apply dates', exact: true }).click();
+  await page.clock.setSystemTime(new Date(2026, 9, 25, 12));
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.locator('.heatmap-cell[aria-label]').last()).toHaveAttribute('aria-label', /October 25, 2026/);
+  await expect(page.getByLabel('Report start date')).toHaveValue('2026-10-01');
+  await expect(page.getByLabel('Report end date')).toHaveValue('2026-10-05');
+  await expect(page.getByText('Independent of session date range')).toBeVisible();
+});
+
+test('settings groups put destructive reset after everyday preferences', async ({ page }) => {
+  await mockDesktop(page); await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('.settings-card h2')).toHaveText(['Timer', 'Sound & notifications', 'Appearance & compact', 'Data & reset']);
+  await page.getByLabel('Play a completion tone').check();
+  await expect(page.locator('.sound-settings').getByRole('status')).toHaveText('Saved');
+  await page.getByRole('button', { name: 'Reset reports', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Reset reports', exact: true })).toHaveClass(/danger/);
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
 });

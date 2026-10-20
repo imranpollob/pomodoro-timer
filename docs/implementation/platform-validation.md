@@ -15,6 +15,14 @@ Some v1 flows have browser-fixture coverage but still need installed-app verific
 
 WSL/Xvfb establishes compilation, webview IPC and storage behavior. A browser fixture verifies rendered UI interactions. Record native evidence separately; neither establishes physical audio delivery, desktop tray visibility, screen-reader support, suspend behavior or installed-package readiness.
 
+## macOS automated UI revision — October 20, 2026
+
+Source: base `b63160f` plus staged task-board work and the uncommitted Balanced UI revision. Host: macOS 27.0.1 (26A434), ARM64; test session: automated Chromium browser fixture, with no native desktop session or display scale acceptance exercised. Rust 1.99.0, Node 26.12.0 (the repository declares Node 24).
+
+Production frontend build and svelte-check (0 errors/warnings), 9 Vitest tests, 31 Playwright tests, 25 core Rust tests, 11 desktop library tests, rustfmt, and workspace Clippy passed. Browser evidence includes 660 × 520 timer actions with maximum-length task titles in both themes, stacked narrow task groups, keyboard Actions and removal confirmation, status-write failure/retry/focus, local-date rollover/resume with custom-range preservation, and 200 × 44 compact sizing. The main-window configuration disables native drag/drop interception for Windows HTML drag-and-drop; actual Windows drag/drop remains to be verified on Windows.
+
+This run used mocked IPC for browser interactions and did not install or launch a native build. Earlier native evidence remains historical; this revision still needs installed-app and physical desktop checks. See the [implementation log](implementation-log.md) for change details.
+
 ## macOS record — October 10, 2026
 
 Revision `88fe017`. Environment: macOS 27.0.1 (build 26A434), Apple M1 / ARM64, Aqua desktop session, built-in Retina display reporting 2560 x 1600 (logical display scale not recorded). Tools: Rust 1.99.0, Node 24.19.0/npm 11.17.0, Python 3.13.9.

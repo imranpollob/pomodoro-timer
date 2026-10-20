@@ -14,8 +14,8 @@ App identity is `com.imranpollob.pomodoro-timer` (version 1.0.0); profiles live 
 
 From the repo root, install native prerequisites per `docs/development.md`:
 
-- `npm ci`; `npm run tauri -- dev`: install/start.
-- `npm run build`; `npm test`; `npm run test:ui`: frontend checks.
+- `npm ci`; `npm run dev`: install/start the desktop app.
+- `npm run build`: package for the current OS. Use `npm run build:frontend`, `npm test`, and `npm run test:ui` for frontend checks.
 - `cargo test --locked -p focus-core`; `cargo test --locked -p pomodoro-desktop --lib`: core regressions.
 - `cargo fmt --all --check`; `cargo clippy --locked --workspace --all-targets -- -D warnings`: style/lint.
 - `cargo build --locked -p pomodoro-desktop --features custom-protocol,smoke-test`, then `python scripts/native_smoke.py target/debug/pomodoro-desktop` (wrap with `dbus-run-session -- xvfb-run --auto-servernum` on headless Linux): native IPC smoke.

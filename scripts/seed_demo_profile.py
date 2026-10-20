@@ -25,10 +25,10 @@ def main() -> None:
     profile.mkdir(parents=True, exist_ok=True)
     database = profile / "pomodoro.sqlite3"
     tasks = [
-        ("demo-writing", "Draft the project proposal", False),
-        ("demo-review", "Review pull requests", False),
-        ("demo-study", "Study Rust and Tauri", False),
-        ("demo-finished", "Organize the workspace", True),
+        ("demo-writing", "Draft the project proposal", "in_progress"),
+        ("demo-review", "Review pull requests", "todo"),
+        ("demo-study", "Study Rust and Tauri", "todo"),
+        ("demo-finished", "Organize the workspace", "done"),
     ]
     now = datetime.now().astimezone()
     today = now.date()
@@ -70,12 +70,25 @@ def main() -> None:
                 str(uuid.uuid5(uuid.NAMESPACE_URL, f"demo:{day}:stopwatch")),
                 '"stopwatch"', int(start.timestamp() * 1000), 42 * 60_000, "finished", tasks[1][0], tasks[1][1],
             ))
+    completions: list[tuple[str, str, int]] = []
+    for days_ago in range(day_count - 1, -1, -1):
+        day = today - timedelta(days=days_ago)
+        if day.weekday() < 5 and days_ago % 3 != 1:
+            task = tasks[(days_ago // 2) % len(tasks)]
+            completed_at = datetime.combine(day, time(16, 30)).astimezone()
+            event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"demo-task-completion:{day}"))
+            completions.append((event_id, task[0], int(completed_at.timestamp() * 1000)))
+        if day.weekday() == 2 and days_ago % 7 == 0:
+            task = tasks[(days_ago // 3 + 1) % len(tasks)]
+            completed_at = datetime.combine(day, time(17, 15)).astimezone()
+            event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"demo-task-completion-extra:{day}"))
+            completions.append((event_id, task[0], int(completed_at.timestamp() * 1000)))
     with sqlite3.connect(database, timeout=10) as connection:
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA synchronous=FULL")
         version = connection.execute("PRAGMA user_version").fetchone()[0]
-        if version > 3:
+        if version > 4:
             raise SystemExit("This profile uses a newer database schema; no sample data was added.")
         if version == 0:
             connection.executescript(
@@ -98,12 +111,24 @@ def main() -> None:
                 "CREATE INDEX sessions_started_idx ON sessions(started_unix_ms DESC);"
                 "PRAGMA user_version=3;"
             )
+        if version < 4:
+            connection.executescript(
+                "ALTER TABLE tasks ADD COLUMN status TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo', 'in_progress', 'done'));"
+                "DELETE FROM tasks;"
+                "CREATE TABLE task_completion_events (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, completed_unix_ms INTEGER NOT NULL);"
+                "CREATE INDEX task_completion_events_completed_idx ON task_completion_events(completed_unix_ms);"
+                "PRAGMA user_version=4;"
+            )
         try:
             now_ms = int(now.timestamp() * 1000)
             before = connection.total_changes
             connection.executemany(
-                "INSERT OR IGNORE INTO tasks (id, title, completed, created_unix_ms, updated_unix_ms) VALUES (?, ?, ?, ?, ?)",
-                [(task_id, title, completed, now_ms, now_ms) for task_id, title, completed in tasks],
+                "INSERT OR IGNORE INTO tasks (id, title, status, created_unix_ms, updated_unix_ms) VALUES (?, ?, ?, ?, ?)",
+                [(task_id, title, status, now_ms, now_ms) for task_id, title, status in tasks],
+            )
+            connection.executemany(
+                "INSERT OR IGNORE INTO task_completion_events (id, task_id, completed_unix_ms) VALUES (?, ?, ?)",
+                completions,
             )
             connection.executemany(
                 "INSERT OR IGNORE INTO sessions (id, phase, started_unix_ms, active_ms, outcome, task_id, task_title) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -115,7 +140,7 @@ def main() -> None:
             connection.rollback()
             raise
     print(f"Updated profile: {profile}")
-    print(f"Added {added} demo rows (up to {len(tasks)} tasks and {len(records)} sessions, spanning {range_start} through {today}, the last two months). Existing records and settings were kept.")
+    print(f"Added {added} demo rows (up to {len(tasks)} tasks, {len(completions)} task completions, and {len(records)} sessions, spanning {range_start} through {today}, the last two months). Existing sessions, settings, and checkpoints were kept; a pre-v4 profile's one-time task reset was applied.")
     print("Restart the desktop app to refresh tasks and reports.")
 
 

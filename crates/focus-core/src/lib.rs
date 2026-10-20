@@ -31,13 +31,38 @@ pub struct TaskReference {
     pub title: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    Todo,
+    InProgress,
+    Done,
+}
+
+impl TaskStatus {
+    pub(crate) fn as_db_value(self) -> &'static str {
+        match self {
+            Self::Todo => "todo",
+            Self::InProgress => "in_progress",
+            Self::Done => "done",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Task {
     pub id: String,
     pub title: String,
-    pub completed: bool,
+    pub status: TaskStatus,
     pub created_unix_ms: u64,
     pub updated_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskCompletionEvent {
+    pub id: String,
+    pub task_id: String,
+    pub completed_unix_ms: u64,
 }
 
 impl Default for Settings {

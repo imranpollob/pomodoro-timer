@@ -7,7 +7,9 @@ export interface SessionRecord {
   id: string; phase: Phase; started_unix_ms: number; active_ms: number; outcome: string; task?: TaskReference | null;
 }
 export interface TaskReference { id: string; title: string }
-export interface Task extends TaskReference { completed: boolean; created_unix_ms: number; updated_unix_ms: number }
+export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export interface Task extends TaskReference { status: TaskStatus; created_unix_ms: number; updated_unix_ms: number }
+export interface TaskCompletionEvent { id: string; task_id: string; completed_unix_ms: number }
 export interface DailyTotals { pomodoro_ms: number; stopwatch_ms: number; pomodoro_sessions: number; stopwatch_sessions: number }
 export interface Snapshot {
   phase: Phase; status: 'idle' | 'running' | 'paused'; display_seconds: number;

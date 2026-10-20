@@ -1,5 +1,5 @@
 use focus_core::{
-    Command, Settings, Task,
+    Command, Settings, Task, TaskCompletionEvent, TaskStatus,
     service::{Snapshot, SystemClock, TimerService},
     store::Store,
 };
@@ -83,13 +83,23 @@ async fn rename_task(
 }
 
 #[tauri::command]
-async fn complete_task(
+async fn set_task_status(
     id: String,
-    completed: bool,
+    status: TaskStatus,
     service: State<'_, TimerService>,
-) -> Result<(), String> {
+) -> Result<Task, String> {
     let service = service.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || service.complete_task(id, completed))
+    tauri::async_runtime::spawn_blocking(move || service.set_task_status(id, status))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn task_completion_events(
+    service: State<'_, TimerService>,
+) -> Result<Vec<TaskCompletionEvent>, String> {
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || service.task_completion_events())
         .await
         .map_err(|e| e.to_string())?
 }
@@ -383,7 +393,8 @@ pub fn run() {
             list_tasks,
             create_task,
             rename_task,
-            complete_task,
+            set_task_status,
+            task_completion_events,
             delete_task,
             daily_totals,
             report_records,

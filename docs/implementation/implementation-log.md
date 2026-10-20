@@ -331,3 +331,23 @@ On revision `88fe017`, macOS 27.0.1 / Apple M1 ARM64: `npm ci`, production front
 
 No installed-app acceptance is claimed from this run. Live menu-bar/Dock behavior, VoiceOver, received audio/notifications, physical sleep/wake, and the installed journey remain open. Full environment and command details are in the [platform validation record](platform-validation.md).
 
+## October 19, 2026 — Task board, completion history, and visual refresh
+
+- Replaced the completed checkbox with To do, In progress, and Done statuses. The task board supports native drag-and-drop and a keyboard-operable status selector. Moving a selected task to Done clears it for future sessions while an active session retains its task snapshot.
+- Added the v4 SQLite migration, which clears existing task rows once while keeping saved sessions and their title snapshots. Each transition into Done adds a completion event; reopening and completing again adds another event. Reset reports now clears sessions and completion events while leaving task statuses intact.
+- Reports now shows a rolling three-local-month task heatmap and a streak based on consecutive local dates with a completion, with today/yesterday grace. Timer, Tasks, Reports, and Settings received the brighter visual system in both themes; reduced-motion behavior is respected and compact remains 200 × 44 logical pixels.
+
+Validation on macOS ARM64 (Rust 1.99.0, Node 26.12.0): `cargo test --locked -p focus-core` 25/25; `cargo test --locked -p pomodoro-desktop --lib` 11/11; workspace Clippy and rustfmt clean; `npm run check` 0 errors/warnings; `npm run build` clean; Vitest 9/9; Playwright 25/25, including board drag, keyboard status change, reports, and compact sizing. The demo seeder compiled and populated an isolated v4 profile with task statuses and completion events. The installed package and native accessibility checks were not run. npm reported that Node 26 is outside the repository's declared Node 24 engine range; checks passed in this environment.
+
+## October 20, 2026 — Accepted Balanced UI revision and review fixes
+
+Implemented the accepted Balanced direction over base revision `b63160f` plus the existing staged work:
+
+- Replaced the main-window gradients/glow/shadows with theme tokens, flat surfaces, subtle borders, and a purple primary action. The sidebar is narrower and becomes horizontal on smaller windows. The task picker precedes the smaller timer ring; next-session context is below the action, with quieter Today/Last session summaries. Start/Pause/Resume and Finish fit the 660 × 520 client area in both themes, including a 120-character task title.
+- Task titles and status stay visible; a keyboard-operable Actions disclosure contains Edit/Remove. Narrow boards stack their status groups instead of hiding Done behind horizontal scrolling. Status changes preserve focus, serialize changes per task, show the persisted selection until success, and remain retryable after a rejected write. The main Tauri window disables its native drag-drop handler to support HTML drag-and-drop on Windows.
+- Reports keeps custom date controls together, enlarges the task heatmap, and labels its independent three-month range. A local-calendar refresh runs while the main renderer is open and on focus/visibility after resume, without advancing timer state. Preset session ranges follow the new local date; custom dates stay unchanged. Applying dates also reloads completion events.
+- Settings groups Timer, Sound & notifications, and Appearance & compact while preserving each backend save path and defaults action. Data & reset is last, with destructive styling on its action and confirmation. Compact controls, native commands, and 200 × 44 sizing are preserved.
+
+Validation: macOS 27.0.1 (26A434), ARM64 host; automated Chromium browser fixture, with no native desktop session exercised. Rust 1.99.0 and Node 26.12.0 (outside the declared Node 24 engine range). `npm run build:frontend` passed with svelte-check 0 errors/warnings; Vitest 9/9; Playwright 31/31, covering both themes, minimum-window controls, keyboard Actions, failed-save retry/focus, date rollover/resume, settings grouping/autosave, and compact dimensions. `cargo test --locked -p focus-core` 25/25; `cargo test --locked -p pomodoro-desktop --lib` 11/11; rustfmt and workspace Clippy with `-D warnings` passed. Rendered Timer/Tasks/Reports/Settings screenshots in `test-results/review-*.png` were visually reviewed (ignored test output).
+
+No installed package, Windows native drag/drop, screen-reader journey, or physical power/audio/notification acceptance is claimed. No user profile was opened or modified by these checks. Native acceptance remains tracked in [platform-validation.md](platform-validation.md).
