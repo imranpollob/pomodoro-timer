@@ -154,9 +154,12 @@ pub fn compact_size_from_pref(raw: Option<&str>) -> (f64, f64) {
 
 pub fn restore(window: &WebviewWindow, placement: &Placement) -> Result<(), String> {
     placement.validate(window.label())?;
-    window
-        .set_size(tauri::LogicalSize::new(placement.width, placement.height))
-        .map_err(|e| e.to_string())?;
+    // The main window has one fixed size from tauri.conf.json, so only its position is restored.
+    if window.label() != "main" {
+        window
+            .set_size(tauri::LogicalSize::new(placement.width, placement.height))
+            .map_err(|e| e.to_string())?;
+    }
     ensure_visible(window, Some((placement.x, placement.y)))
 }
 pub fn ensure_visible(window: &WebviewWindow, position: Option<(i32, i32)>) -> Result<(), String> {

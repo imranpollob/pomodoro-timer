@@ -221,7 +221,7 @@ test('reports default to today with active preset states and inclusive ranges', 
   await expect(page.locator('thead th')).toHaveCount(5);
 });
 
-test('each page uses shared typography and fits the minimum window width in both themes', async ({ page }) => {
+test('each page uses shared typography and fits the fixed window in both themes', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -233,8 +233,7 @@ test('each page uses shared typography and fits the minimum window width in both
       if (name !== 'Timer') await expect(page.locator('.card-title h2').first()).toHaveCSS('font-size', '20px');
       await page.setViewportSize({ width: 960, height: 680 });
       await page.screenshot({ path: `test-results/review-${name.toLowerCase()}-${theme}.png`, fullPage: true });
-      await page.setViewportSize({ width: 660, height: 520 });
-      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(660);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(960);
     }
   }
 });
@@ -490,7 +489,7 @@ test('Linux settings show tray close and desktop notification hint', async ({ pa
   await expect(page.getByLabel('Show in menu bar')).toHaveCount(0);
 });
 
-test('timer controls stay inside the minimum window in both themes and all timer states', async ({ page }) => {
+test('timer controls stay inside the fixed window in both themes and all timer states', async ({ page }) => {
   await mockDesktop(page, { seconds: 1500, taskTitle: 'Review the release notes and confirm keyboard access for every control. '.repeat(2).slice(0, 120) }); await page.goto('/');
   await page.getByLabel('Task for the next session').selectOption('task-1');
   for (const theme of ['dark', 'light']) {
@@ -498,24 +497,24 @@ test('timer controls stay inside the minimum window in both themes and all timer
     await page.getByLabel('Appearance theme').selectOption(theme);
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await page.getByRole('button', { name: 'Timer', exact: true }).click();
-    await page.setViewportSize({ width: 660, height: 520 });
+    await page.setViewportSize({ width: 960, height: 680 });
     for (const label of ['Start focus', 'Pause', 'Resume']) {
       const button = page.getByRole('button', { name: label, exact: true });
       await expect(button).toBeInViewport({ ratio: 1 });
       expect(await page.evaluate(() => window.scrollY)).toBe(0);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(660);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(960);
       if (label !== 'Start focus') await expect(page.getByRole('button', { name: 'Finish', exact: true })).toBeInViewport({ ratio: 1 });
       await button.click();
     }
     await page.getByRole('button', { name: 'Finish', exact: true }).click();
     await page.getByRole('button', { name: 'Finish and save', exact: true }).click();
-    await page.screenshot({ path: `test-results/minimum-timer-${theme}.png` });
+    await page.screenshot({ path: `test-results/timer-${theme}.png` });
   }
 });
 
-test('narrow task boards expose every status without horizontal scrolling', async ({ page }) => {
+test('task board exposes every status without horizontal scrolling', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
-  await page.setViewportSize({ width: 660, height: 520 });
+  await page.setViewportSize({ width: 960, height: 680 });
   await page.getByRole('button', { name: 'Tasks', exact: true }).click();
   expect(await page.locator('.task-board').evaluate(element => element.scrollWidth === element.clientWidth)).toBe(true);
   for (const label of ['To do', 'In progress', 'Done']) {
@@ -523,7 +522,7 @@ test('narrow task boards expose every status without horizontal scrolling', asyn
     await heading.scrollIntoViewIfNeeded();
     await expect(heading).toBeInViewport({ ratio: 1 });
   }
-  await page.screenshot({ path: 'test-results/minimum-task-board.png', fullPage: true });
+  await page.screenshot({ path: 'test-results/task-board.png', fullPage: true });
 });
 
 test('a rejected task status stays persisted and can be retried with keyboard focus preserved', async ({ page }) => {

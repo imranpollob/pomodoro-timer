@@ -469,7 +469,7 @@
             </div>
             <div class="timer-actions"><button class="primary" onclick={primary} disabled={busy}><Icon name={snapshot.status === 'running' ? 'pause' : 'play'} />{actionLabel(snapshot)}</button>
               {#if snapshot.status !== 'idle'}<button class="secondary" onclick={() => finishDialog.showModal()} disabled={busy || snapshot.pending_save}><Icon name="finish" />{snapshot.phase.includes('break') ? 'Skip break' : 'Finish'}</button>{/if}</div>
-            <p class="next-session">{snapshot.phase === 'stopwatch' ? 'Finish to save your session.' : snapshot.phase === 'focus' ? `Next: ${snapshot.cycle === snapshot.cycle_interval ? snapshot.settings.long_break_minutes : snapshot.settings.short_break_minutes} minute ${snapshot.cycle === snapshot.cycle_interval ? 'long' : 'short'} break` : `Next: ${snapshot.settings.focus_minutes} minute focus`}{#if snapshot.phase !== 'stopwatch' && snapshot.settings.auto_start_next}<span>Starts automatically on completion</span>{/if}</p>
+            {#if snapshot.phase !== 'stopwatch' && snapshot.settings.auto_start_next}<p class="next-session"><span>Starts automatically on completion</span></p>{/if}
           </section>
           <aside class="focus-aside">
             <section class="summary-card"><div class="card-title"><Icon name="history" /><h2>Today</h2></div><strong>{Math.floor(((today?.pomodoro_ms ?? 0) + (today?.stopwatch_ms ?? 0)) / 60_000)}<small> min focused</small></strong><div class="summary-row"><span>Pomodoro</span><b>{Math.floor((today?.pomodoro_ms ?? 0) / 60_000)} min · {today?.pomodoro_sessions ?? 0}</b></div><div class="summary-row"><span>Stopwatch</span><b>{Math.floor((today?.stopwatch_ms ?? 0) / 60_000)} min · {today?.stopwatch_sessions ?? 0}</b></div></section>

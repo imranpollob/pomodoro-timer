@@ -6,7 +6,7 @@ use focus_core::{
 use std::sync::Arc;
 use tauri::{
     Emitter, Manager, State,
-    menu::{CheckMenuItem, Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind},
     tray::TrayIconBuilder,
 };
 use tauri_plugin_notification::NotificationExt;
@@ -165,6 +165,35 @@ fn size_compact(window: &tauri::WebviewWindow, width: f64, height: f64) -> Resul
     window
         .set_max_size(Some(tauri::LogicalSize::new(width, height)))
         .map_err(|e| e.to_string())
+}
+
+/// Keeps the main window out of macOS full screen: the default View > Enter Full Screen item is
+/// removed, and AppKit is told the window has no full-screen mode, which also hides the green button.
+#[cfg(target_os = "macos")]
+fn disable_macos_fullscreen(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(menu) = app.handle().menu() {
+        for item in menu.items()? {
+            if let MenuItemKind::Submenu(view) = &item
+                && view.text()? == "View"
+            {
+                menu.remove(view)?;
+            }
+        }
+    }
+    let main = app
+        .get_webview_window("main")
+        .ok_or("Main window unavailable")?;
+    // SAFETY: the pointer is the main window's live NSWindow, and setup runs on the main thread.
+    let ns_window = unsafe { &*(main.ns_window()? as *const objc2_app_kit::NSWindow) };
+    let behavior = ns_window
+        .collectionBehavior()
+        .difference(
+            objc2_app_kit::NSWindowCollectionBehavior::FullScreenPrimary
+                | objc2_app_kit::NSWindowCollectionBehavior::FullScreenAuxiliary,
+        )
+        .union(objc2_app_kit::NSWindowCollectionBehavior::FullScreenNone);
+    ns_window.setCollectionBehavior(behavior);
+    Ok(())
 }
 
 fn show_main(app: &tauri::AppHandle) -> Result<(), String> {
@@ -515,6 +544,7 @@ pub fn run() {
                 if let Ok(snapshot) = app.state::<TimerService>().snapshot() {
                     menubar::sync(app.handle(), &snapshot);
                 }
+                disable_macos_fullscreen(app)?;
             }
             #[cfg(feature = "smoke-test")]
             smoke::start(app.handle().clone());

@@ -24,6 +24,9 @@ rodio = { version = "0.21.1", default-features = false, features = ["playback"] 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_RemoteDesktop", "Win32_System_LibraryLoader", "Win32_Graphics_Gdi"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", features = ["NSWindow"] }
+
 [features]
 smoke-test = []
 custom-protocol = ["tauri/custom-protocol"]

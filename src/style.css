@@ -223,36 +223,6 @@ dialog::backdrop { background: #0009; }
 .compact-loading { font-size: 12px; height: 44px; display: grid; place-items: center; color: #e6ebf5; }
 .compact-options { width: 20px; background: transparent; }
 .compact-options:hover:not(:disabled) { background: #263b5d; }
-@media (max-width: 900px) {
-  .task-board { grid-template-columns: 1fr; gap: 20px; }
-  .task-column { min-height: 0; }
-  .task-column-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .task-column-heading { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
-  .task-count { margin-left: 0; }
-}
-@media (max-width: 780px) {
-  .app-shell { display: block; }
-  .sidebar { position: static; height: auto; overflow: visible; padding: 10px 12px; border-right: 0; border-bottom: 1px solid var(--border); flex-direction: row; align-items: center; gap: 10px; }
-  .brand { padding: 0; gap: 6px; }
-  nav { display: flex; gap: 4px; margin-left: auto; }
-  nav button, .settings-entry { padding: 8px; gap: 6px; }
-  .sidebar-footer { margin: 0; padding: 0; }
-  .local-status { position: absolute; top: 58px; right: 12px; background: var(--surface); }
-  main { padding: 12px 16px; }
-  .timer-heading { margin-bottom: 12px; }
-  .timer-layout { grid-template-columns: minmax(0, 1fr) 175px; gap: 16px; }
-  .timer-card { padding: 12px; }
-  .mode-switch { margin-bottom: 8px; }
-  .timer-face { width: 164px; margin: 8px auto; }
-  .time-digits { font-size: 42px; }
-  .phase-label, .cycle-label, .state-label { font-size: var(--text-caption); }
-  .cycle-label { margin: 3px 0; }
-  .next-session { margin-top: 6px; }
-  .focus-aside { gap: 18px; }
-  .heatmap-weekdays, .heatmap-week { grid-template-rows: 20px repeat(7, 28px); }
-  .heatmap-weekdays { line-height: 28px; }
-  .heatmap-cell { width: min(100%, 28px); height: 28px; min-height: 28px; }
-}
 @media (max-height: 600px) {
   .timer-card { padding: 12px; }
   .mode-switch { margin-bottom: 8px; }
@@ -261,20 +231,5 @@ dialog::backdrop { background: #0009; }
   .phase-label, .cycle-label, .state-label { font-size: var(--text-caption); }
   .cycle-label { margin: 3px 0; }
   .cycle-dots i { width: 4px; height: 4px; }
-}
-@media (max-width: 580px) {
-  .sidebar { flex-wrap: wrap; }
-  .brand { flex-basis: 100%; }
-  nav { margin-left: 0; }
-  nav button, .settings-entry { font-size: var(--text-caption); }
-  .timer-layout { grid-template-columns: minmax(0, 1fr); }
-  .focus-aside { grid-template-columns: 1fr 1fr; }
-  .focus-aside > section + section { border: 0; padding: 0; }
-  .task-column-list, .settings-grid { grid-template-columns: 1fr; }
-  .new-task-form .input-unit { flex-wrap: wrap; }
-  .task-title-input { flex-basis: 100%; }
-  .report-totals { gap: 10px; }
-  .report-totals strong { font-size: 24px; }
-  .report-day { grid-template-columns: 95px minmax(20px, 1fr) 100px; gap: 6px; font-size: var(--text-caption); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

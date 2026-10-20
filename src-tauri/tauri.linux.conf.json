@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "app": {
     "windows": [
-      { "label": "main", "title": "Pomodoro", "width": 960, "height": 680, "minWidth": 660, "minHeight": 520, "transparent": true },
+      { "label": "main", "title": "Pomodoro", "width": 960, "height": 680, "minWidth": 960, "minHeight": 680, "maxWidth": 960, "maxHeight": 680, "transparent": true },
       { "label": "compact", "title": "Pomodoro compact timer", "url": "index.html?view=compact", "width": 200, "height": 44, "minWidth": 200, "minHeight": 44, "decorations": false, "transparent": true, "shadow": false, "resizable": true, "maximizable": false, "minimizable": false, "visible": false, "alwaysOnTop": true }
     ]
   }
