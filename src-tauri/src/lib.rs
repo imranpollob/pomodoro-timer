@@ -6,7 +6,7 @@ use focus_core::{
 use std::sync::Arc;
 use tauri::{
     Emitter, Manager, State,
-    menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind},
+    menu::{CheckMenuItem, Menu, MenuItem},
     tray::TrayIconBuilder,
 };
 use tauri_plugin_notification::NotificationExt;
@@ -173,7 +173,7 @@ fn size_compact(window: &tauri::WebviewWindow, width: f64, height: f64) -> Resul
 fn disable_macos_fullscreen(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(menu) = app.handle().menu() {
         for item in menu.items()? {
-            if let MenuItemKind::Submenu(view) = &item
+            if let tauri::menu::MenuItemKind::Submenu(view) = &item
                 && view.text()? == "View"
             {
                 menu.remove(view)?;
