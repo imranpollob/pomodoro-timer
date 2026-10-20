@@ -1,4 +1,4 @@
-import type { TaskCompletionEvent } from './types';
+import { localDate, type TaskCompletionEvent } from './types';
 
 export interface CompletionDay {
   day: string;
@@ -15,10 +15,6 @@ export interface CompletionSummary {
   weeks: CompletionWeek[];
   streak: number;
   total: number;
-}
-
-function localDate(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 export function buildCompletionSummary(events: TaskCompletionEvent[], now = new Date()): CompletionSummary {

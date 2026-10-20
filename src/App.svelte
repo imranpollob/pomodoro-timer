@@ -4,10 +4,26 @@
   import { mergeUnedited } from './lib/drafts';
   import { buildCompletionSummary } from './lib/taskProgress';
   import { transport, invoke, listen } from './lib/desktop';
-  import { actionLabel, formatTime, phaseLabel, type Snapshot, type Command, type DesktopState, type DesktopPreferences, type Settings, type Task, type TaskStatus, type TaskCompletionEvent, type DailyTotals, type SessionRecord } from './lib/types';
+  import {
+    actionLabel, formatTime, localDate, phaseLabel,
+    type Snapshot, type Command, type DesktopState, type DesktopPreferences,
+    type Settings, type Task, type TaskStatus, type TaskCompletionEvent,
+    type DailyTotals, type SessionRecord,
+  } from './lib/types';
   import Compact from './parts/Compact.svelte';
   import Icon from './parts/Icon.svelte';
 
+  const navigation = [
+    { id: 'timer', label: 'Timer', icon: 'timer' },
+    { id: 'tasks', label: 'Tasks', icon: 'check' },
+    { id: 'reports', label: 'Reports', icon: 'chart' },
+  ] as const;
+  const durationFields = [
+    { key: 'focus_minutes', label: 'Focus duration', max: 60 },
+    { key: 'short_break_minutes', label: 'Short break', max: 30 },
+    { key: 'long_break_minutes', label: 'Long break', max: 60 },
+    { key: 'long_break_interval', label: 'Sessions before a long break', max: 10 },
+  ] as const;
   const compact = new URLSearchParams(location.search).get('view') === 'compact';
   let snapshot = $state<Snapshot | null>(null);
   let error = $state('');
@@ -84,9 +100,6 @@
     const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
     today = await invoke<DailyTotals>('daily_totals', { startUnixMs: start, endUnixMs: end });
   }
-  function localDate(date: Date) {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  }
   function localMidnight(value: string) { return new Date(`${value}T00:00:00`).getTime(); }
   function dateLabel(value: string) {
     return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -100,7 +113,7 @@
     void loadReport();
   }
   async function loadReport() {
-    if (updateCalendarDate()) void loadToday().catch(e => reportError(String(e)));
+    if (updateCalendarDate()) void loadToday().catch(reportError);
     if (!reportFrom || !reportTo || reportFrom > reportTo) { reportError('Choose a valid report date range.'); return; }
     const start = localMidnight(reportFrom);
     const endDate = new Date(`${reportTo}T00:00:00`); endDate.setDate(endDate.getDate() + 1);
@@ -112,7 +125,7 @@
         invoke<TaskCompletionEvent[]>('task_completion_events'),
       ]);
       reportRows = rows; reportTotals = totals; taskCompletionEvents = completions; reportLoaded = true; error = '';
-    } catch (e) { reportError(String(e)); }
+    } catch (e) { reportError(e); }
   }
   function matchPreset(from: string, to: string): 'today' | 'week' | 'month' | null {
     if (!from || !to) return null;
@@ -151,12 +164,12 @@
   }
   function refreshCalendar() {
     if (compact || !snapshot || !updateCalendarDate()) return;
-    void loadToday().catch(e => reportError(String(e)));
+    void loadToday().catch(reportError);
     if (page === 'reports') void loadReport();
   }
   async function taskRequest(command: string, args: Record<string, unknown> = {}) {
     try { await invoke(command, args); await loadTasks(); return true; }
-    catch (e) { reportError(String(e)); return false; }
+    catch (e) { reportError(e); return false; }
   }
   async function setTaskStatus(id: string, status: TaskStatus, control?: HTMLSelectElement) {
     const existing = tasks.find(task => task.id === id);
@@ -175,7 +188,7 @@
         if (taskCelebrationTimer !== null) clearTimeout(taskCelebrationTimer);
         taskCelebrationTimer = setTimeout(() => { taskCelebration = ''; taskCelebrationTimer = null; }, 2600);
       }
-    } catch (e) { reportError(String(e)); }
+    } catch (e) { reportError(e); }
     finally {
       changingTaskIds = changingTaskIds.filter(taskId => taskId !== id);
       await tick();
@@ -217,7 +230,7 @@
       await loadTasks();
       if (snapshot?.selected_task?.id === id) await send({ type: 'select_task', task: { id, title: updated.title } });
       editingTaskId = null;
-    } catch (e) { reportError(String(e)); }
+    } catch (e) { reportError(e); }
   }
   async function removeTask(id: string) {
     const task = tasks.find(item => item.id === id);
@@ -265,7 +278,7 @@
   const client = new TimerClient(transport, incoming => {
     if (draft && snapshot) draft = mergeUnedited(draft, snapshot.settings, incoming.settings);
     const latestRecordId = incoming.records[0]?.id ?? null;
-    if (latestRecordId && latestRecordId !== lastRecordId) { void loadToday().catch(e => reportError(String(e))); refreshReportIfVisible(); }
+    if (latestRecordId && latestRecordId !== lastRecordId) { void loadToday().catch(reportError); refreshReportIfVisible(); }
     lastRecordId = latestRecordId;
     snapshot = incoming;
   });
@@ -274,24 +287,18 @@
   async function send(command: Command) {
     if (busy) return;
     busy = true; error = '';
-    try { await client.send(command); } catch (e) { reportError(String(e)); }
+    try { await client.send(command); } catch (e) { reportError(e); }
     finally { busy = false; }
   }
   async function native(command: string) {
     try { await invoke(command); } catch (e) { error = String(e); }
   }
-  function reportError(message: string) {
-    error = message;
-    if (compact) void invoke('report_desktop_error', { message }).catch(() => {});
+  function reportError(message: unknown) {
+    error = String(message);
+    if (compact) void invoke('report_desktop_error', { message: error }).catch(() => {});
   }
   function validTimerDraft(value: Settings) {
-    const checks: [number, number, number][] = [
-      [value.focus_minutes, 1, 60],
-      [value.short_break_minutes, 1, 30],
-      [value.long_break_minutes, 1, 60],
-      [value.long_break_interval, 1, 10],
-    ];
-    return checks.every(([v, min, max]) => Number.isInteger(v) && v >= min && v <= max);
+    return durationFields.every(({ key, max }) => Number.isInteger(value[key]) && value[key] >= 1 && value[key] <= max);
   }
   function settingsChanged(event: Event) {
     const owner = (event.target as HTMLElement).closest('[data-settings-owner]')?.getAttribute('data-settings-owner');
@@ -320,7 +327,7 @@
         const defaults = await invoke<Settings>('timer_defaults');
         draft = { ...defaults }; timerDirty = true; timerSaveStatus = ''; error = '';
         flushTimerSave();
-      } catch (e) { reportError(String(e)); }
+      } catch (e) { reportError(e); }
     });
   }
   async function restoreDesktopDefaults() {
@@ -330,7 +337,7 @@
         const defaults = await invoke<DesktopPreferences>('desktop_defaults');
         desktopDraft = { ...defaults }; desktopDirty = true; desktopSaveStatus = ''; error = '';
         flushDesktopSave();
-      } catch (e) { reportError(String(e)); }
+      } catch (e) { reportError(e); }
     });
   }
   function flushTimerSave() {
@@ -357,7 +364,7 @@
         lastRecordId = snapshot.records[0]?.id ?? null;
         await Promise.all([loadToday(), loadTaskCompletionEvents()]);
         error = '';
-      } catch (e) { reportError(String(e)); }
+      } catch (e) { reportError(e); }
     });
   }
   function navigate(destination: string) {
@@ -396,9 +403,9 @@
           if (disposed) stop(); else listeners.push(stop);
           const errorStop = await listen<string>('desktop-error', event => { error = event.payload; });
           if (disposed) errorStop(); else listeners.push(errorStop);
-        try { await Promise.all([loadTasks(), loadToday()]); } catch (e) { reportError(String(e)); }
-        const completedStop = await listen('session-completed', () => { void loadToday().catch(e => reportError(String(e))); refreshReportIfVisible(); });
-        if (disposed) completedStop(); else listeners.push(completedStop);
+          try { await Promise.all([loadTasks(), loadToday()]); } catch (e) { reportError(e); }
+          const completedStop = await listen('session-completed', () => { void loadToday().catch(reportError); refreshReportIfVisible(); });
+          if (disposed) completedStop(); else listeners.push(completedStop);
         }
       } catch (e) { if (!disposed) error = String(e); }
     }
@@ -424,7 +431,7 @@
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark"><Icon name="timer" size={22} /></span><strong>Pomodoro</strong></div>
       <nav aria-label="Main navigation">
-        {#each [{ id: 'timer', label: 'Timer', icon: 'timer' }, { id: 'tasks', label: 'Tasks', icon: 'check' }, { id: 'reports', label: 'Reports', icon: 'chart' }] as item}
+        {#each navigation as item (item.id)}
           <button class:active={page === item.id} aria-current={page === item.id ? 'page' : undefined} disabled={!snapshot && item.id !== 'timer'} onclick={() => navigate(item.id)}><Icon name={item.icon} />{item.label}</button>
         {/each}
       </nav>
@@ -507,7 +514,7 @@
           {#if reportTotals}
             <div class="report-totals"><article><span>Focus time</span><strong>{Math.floor((reportTotals.pomodoro_ms + reportTotals.stopwatch_ms) / 3_600_000)}h {Math.floor(((reportTotals.pomodoro_ms + reportTotals.stopwatch_ms) % 3_600_000) / 60_000)}m</strong></article><article><span>Pomodoro sessions</span><strong>{reportTotals.pomodoro_sessions}</strong></article><article><span>Stopwatch sessions</span><strong>{reportTotals.stopwatch_sessions}</strong></article></div>
             <section class="completion-panel" aria-labelledby="completion-heading">
-              <div class="completion-panel-heading"><div><p class="eyebrow">Your progress</p><h3 id="completion-heading">Tasks completed</h3><p class="completion-subtitle">Last three months · {completionSummary.total} completions</p><p class="completion-range-note">Independent of session date range</p></div>
+              <div class="completion-panel-heading"><div><h3 id="completion-heading">Tasks completed</h3><p class="completion-subtitle">Last three months · {completionSummary.total} completions</p><p class="completion-range-note">Independent of session date range</p></div>
                 <div class="streak-card"><span class="streak-flame"><Icon name="flame" size={22} /></span><strong>{completionSummary.streak}</strong><span>day streak</span></div>
               </div>
               <div class="heatmap-scroll"><div class="heatmap" role="group" aria-label="Task completions over the last three months">
@@ -534,8 +541,8 @@
             <div class="card-title"><Icon name="settings" /><h2>Timer</h2></div>
             <p class="muted">Duration changes apply to the next session.</p>
             <div class="settings-grid">
-              {#each [{ key: 'focus_minutes', label: 'Focus duration', max: 60 }, { key: 'short_break_minutes', label: 'Short break', max: 30 }, { key: 'long_break_minutes', label: 'Long break', max: 60 }, { key: 'long_break_interval', label: 'Sessions before a long break', max: 10 }] as field}
-                <label>{field.label}<span class="input-unit"><input type="number" min="1" max={field.max} step="1" required value={draft[field.key as keyof Settings] as number} oninput={event => { if (draft) draft = { ...draft, [field.key]: event.currentTarget.valueAsNumber }; }} />{field.key.includes('minutes') ? 'min' : 'sessions'}</span></label>
+              {#each durationFields as field (field.key)}
+                <label>{field.label}<span class="input-unit"><input type="number" min="1" max={field.max} step="1" required value={draft[field.key]} oninput={event => { if (draft) draft = { ...draft, [field.key]: event.currentTarget.valueAsNumber }; }} />{field.key.includes('minutes') ? 'min' : 'sessions'}</span></label>
               {/each}
             </div>
             <label class="checkbox-row"><input type="checkbox" bind:checked={draft.auto_start_next} />Automatically start the next focus or break after a session completes</label>

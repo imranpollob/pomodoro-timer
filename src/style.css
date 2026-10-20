@@ -47,11 +47,11 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; min-width: 320px; background: transparent; }
-button, input, select, summary { font: inherit; }
+button, input, select { font: inherit; }
 button { cursor: pointer; border: 0; color: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 8px; padding: 9px 13px; font-size: var(--text-body); font-weight: 600; }
 button:disabled { opacity: .5; cursor: default; }
-button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-button:hover:enabled, summary:hover { filter: brightness(1.08); }
+button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+button:hover:enabled { filter: brightness(1.08); }
 h1, h2, h3, p { margin: 0; }
 h2 { font-size: var(--text-heading); font-weight: 600; }
 h3 { font-size: var(--text-body); font-weight: 600; }
@@ -161,7 +161,6 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; f
 .report-totals strong { color: var(--text); font-size: var(--text-metric); font-weight: 600; }
 .completion-panel { border-top: 1px solid var(--border); padding: 20px 0 0; margin-top: 24px; }
 .completion-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-.eyebrow { display: none; }
 .completion-subtitle, .completion-range-note { color: var(--muted); font-size: var(--text-caption); margin-top: 4px; }
 .streak-card { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-radius: 7px; background: var(--mint-soft); color: var(--mint); font-size: var(--text-caption); }
 .streak-flame { display: inline-flex; }
