@@ -1,6 +1,6 @@
 # Pomodoro Timer
 
-A local desktop focus timer for Windows, macOS, and Linux, built with Tauri 2, Rust, Svelte/TypeScript, and SQLite. App identifier: `com.imranpollob.pomodoro-timer`; version: `1.0.0`.
+A local desktop focus timer for Windows, macOS, and Linux, built with Tauri 2, Rust, Svelte/TypeScript, and SQLite. App identifier: `com.imranpollob.pomodoro-timer`; version: `1.1.0`.
 
 ## Features
 
