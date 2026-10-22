@@ -261,6 +261,27 @@ test('Linux compact time and background drag without selecting text or activatin
   await page.screenshot({ path: 'test-results/linux-compact.png' });
 });
 
+test('compact time opens main through assistive activation without dragging', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, platform: 'windows' });
+  await page.setViewportSize({ width: 170, height: 44 }); await page.goto('/?view=compact');
+  const time = page.getByRole('button', { name: 'Focus, 25:00. Open main window', exact: true });
+  await expect(time).toBeVisible();
+  await time.evaluate(element => {
+    // Chromium UIA Invoke sends mousedown with detail 0, then click with
+    // detail 1 and the primary button still marked as pressed.
+    for (const [type, detail, buttons] of [
+      ['mousedown', 0, 1], ['mouseup', 0, 0], ['click', 1, 1],
+    ] as const) {
+      element.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, detail, buttons }));
+    }
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).__openMainCalls ?? 0)).toBe(1);
+  expect(await page.evaluate(() => (window as any).__dragCalls ?? 0)).toBe(0);
+  // Other assistive tools can activate the element directly without mouse events.
+  await time.evaluate(element => (element as HTMLElement).click());
+  await expect.poll(() => page.evaluate(() => (window as any).__openMainCalls ?? 0)).toBe(2);
+});
+
 test('timer preferences autosave and invalid values are skipped', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();

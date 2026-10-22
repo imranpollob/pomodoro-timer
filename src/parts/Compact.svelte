@@ -50,11 +50,18 @@
   }
 
   function drag(event: MouseEvent) {
-    if (event.button !== 0 || !(event.target instanceof Element) ||
+    // UIA Invoke sends a synthetic mousedown with no physical click count.
+    if (event.detail === 0 || event.button !== 0 || !(event.target instanceof Element) ||
         !strip.contains(event.target) || event.target.closest('button')) return;
     event.preventDefault();
     if (event.detail === 2) void native('open_main');
     else void getCurrentWindow().startDragging().catch(cause => error(String(cause)));
+  }
+
+  function activateTime(event: MouseEvent) {
+    // Direct activation has detail 0; Chromium's accessibility click has
+    // buttons 1. Physical clicks finish with buttons 0 and keep drag/double-click.
+    if (event.detail === 0 || event.buttons === 1) void native('open_main');
   }
 
   onMount(() => {
@@ -133,6 +140,7 @@
   <span class="compact-time" role="button" tabindex="0" bind:this={timeRegion}
     aria-label={`${phaseLabel[state.phase]}, ${display}${state.active_task ? `, task ${state.active_task.title}` : ''}. Open main window`}
     title={`${phaseLabel[state.phase]} · ${state.status}. Drag to move. Double-click or press Enter to open main window.`}
+    onclick={activateTime}
     onkeydown={event => {
       if (event.key === 'Enter') { event.preventDefault(); void native('open_main'); }
     }}><span class="compact-digits" bind:this={digits}>{display}</span></span>
