@@ -1,4 +1,4 @@
-//! Google OAuth and task sync run in Rust; credentials never enter the webview.
+//! Google OAuth and sync run in Rust; credentials never enter the webview.
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use focus_core::{service::TimerService, sync::SyncReply};
 use reqwest::{Client, Url};
@@ -256,7 +256,7 @@ impl AccountService {
         self.restore_pending.store(false, Ordering::SeqCst);
         self.publish(|state| {
             state.email = Some(email);
-            state.message = "Signed in. Syncing tasks…".into();
+            state.message = "Signed in. Syncing tasks and focus history…".into();
         });
         Ok(())
     }
@@ -405,7 +405,7 @@ impl AccountService {
                         *self.session.lock().unwrap() = None;
                         self.publish(|state| {
                             state.email = None;
-                            state.message = "Sign in to resume task sync.".into();
+                            state.message = "Sign in to resume sync.".into();
                         });
                     }
                     return Err(error);
@@ -421,41 +421,42 @@ impl AccountService {
             )
         };
         let config = self.config.as_ref().unwrap();
-        self.publish(|state| state.message = "Syncing tasks…".into());
+        self.publish(|state| state.message = "Syncing tasks and focus history…".into());
         let mut conflicts = 0;
         // Bound a pass so heavy editing cannot monopolize the worker forever.
         for _ in 0..100 {
             let batch = self.timer.sync_batch(account.clone())?;
             let reply: SyncReply = tauri::async_runtime::block_on(async {
-                let response = self.client.post(format!("{}/rest/v1/rpc/sync_tasks", config.url))
+                let response = self.client.post(format!("{}/rest/v1/rpc/sync_app_data", config.url))
                     .header("apikey", &config.key).bearer_auth(&token)
-                    .json(&serde_json::json!({"p_changes": batch.changes, "p_after_version": batch.cursor})).send().await
+                    .json(&serde_json::json!({"p_changes": batch.changes, "p_after_version": batch.cursor, "p_history_changes": batch.history_changes, "p_history_after_version": batch.history_cursor})).send().await
                     .map_err(|_| "Tasks are saved on this device. Sync will retry when your connection returns.".to_string())?;
                 match response.status().as_u16() {
                     401 => {
                         if let Some(session) = self.session.lock().unwrap().as_mut() { session.expires_at = 0; }
                         return Err("Reconnecting your account. Try syncing again.".into());
                     }
-                    404 => return Err("Cloud task sync is not set up yet. Apply the Supabase migration first.".into()),
-                    status if !(200..300).contains(&status) => return Err("Could not sync tasks. Your local changes are saved; please try again later.".into()),
+                    404 => return Err("Cloud sync needs the latest Supabase migration (202610220001_focus_history_sync.sql). Apply it in the SQL Editor.".into()),
+                    status if !(200..300).contains(&status) => return Err("Could not sync tasks and focus history. Your local changes are saved; please try again later.".into()),
                     _ => {}
                 }
                 response.json::<SyncReply>().await.map_err(|_| {
-                    "Supabase returned invalid sync data. Local tasks were preserved.".to_string()
+                    "Supabase returned invalid sync data. Local tasks and focus history were preserved.".to_string()
                 })
             })?;
             conflicts += reply.conflicts;
-            let more = reply.has_more;
+            let more = reply.has_more || reply.history.has_more;
             self.timer.apply_task_sync(account.clone(), reply)?;
             let _ = self.app.emit("tasks-synced", ());
-            if !more && self.timer.sync_batch(account.clone())?.changes.is_empty() {
-                self.publish(|state| { state.last_synced_ms = Some(seconds() * 1000); state.message = if conflicts == 0 { "All tasks are synced.".into() } else { format!("Tasks synced. {conflicts} conflicting change(s) kept the copy already saved on the server.") }; });
+            let remaining = self.timer.sync_batch(account.clone())?;
+            if !more && remaining.changes.is_empty() && remaining.history_changes.is_empty() {
+                self.publish(|state| { state.last_synced_ms = Some(seconds() * 1000); state.message = if conflicts == 0 { "Tasks and focus history are synced.".into() } else { format!("Tasks synced. {conflicts} conflicting change(s) kept the copy already saved on the server.") }; });
                 return Ok(());
             }
         }
         self.wake();
         self.publish(|state| {
-            state.message = "More tasks are waiting to sync. Sync will continue shortly.".into()
+            state.message = "More data is waiting to sync. Sync will continue shortly.".into()
         });
         Ok(())
     }
@@ -466,7 +467,8 @@ impl AccountService {
         self.publish(|state| {
             state.email = None;
             state.last_synced_ms = None;
-            state.message = "Signed out. Your tasks remain on this device.".into();
+            state.message =
+                "Signed out. Your tasks and focus history remain on this device.".into();
         });
         if let Some(session) = session {
             let config = self.config.as_ref().unwrap();

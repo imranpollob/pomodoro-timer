@@ -52,10 +52,10 @@
 
 <section class="settings-card account-settings" aria-labelledby="account-heading">
   <div class="card-title"><Icon name="account" /><h2 id="account-heading">Account &amp; sync</h2></div>
-  <p class="muted">Sync task names, status and deletions across devices. Focus history and app settings stay on this device.</p>
+  <p class="muted">Sync tasks and focus history across devices. App settings stay on this device.</p>
   {#if account?.email}<p class="account-email">Signed in as <strong>{account.email}</strong></p>{/if}
-  {#if account && !account.configured}<p class="update-status muted">Google sign-in is not enabled in this build. Your tasks are saved on this device.</p>
-  {:else if account && !account.email && !account.signing_in}<p class="update-status muted">Signing in syncs the tasks already on this device with your Google account.</p>{/if}
+  {#if account && !account.configured}<p class="update-status muted">Google sign-in is not enabled in this build. Your tasks and focus history are saved on this device.</p>
+  {:else if account && !account.email && !account.signing_in}<p class="update-status muted">Signing in syncs the tasks and focus history already on this device with your Google account.</p>{/if}
   <div class="form-actions">
     {#if account?.email}
       <button class="secondary" type="button" disabled={busy} onclick={() => void action('sync_tasks_now')}>{busy ? 'Syncing…' : 'Sync now'}</button>
@@ -68,5 +68,5 @@
   <p class="update-status muted" role="status" aria-live="polite">{account?.configured ? account.message : ''}</p>
   {#if account?.last_synced_ms}<p class="update-status muted">Last synced {new Date(account.last_synced_ms).toLocaleString()}</p>{/if}
   {#if error || account?.error}<p class="update-error" role="alert">{error || account?.error}</p>{/if}
-  {#if account?.email}<p class="update-status muted">Signing out keeps your tasks on this device.</p>{/if}
+  {#if account?.email}<p class="update-status muted">Signing out keeps your tasks and focus history on this device.</p>{/if}
 </section>

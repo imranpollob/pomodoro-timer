@@ -49,11 +49,18 @@ async fn get_snapshot(
 async fn timer_command(
     command: Command,
     service: State<'_, TimerService>,
+    app: tauri::AppHandle,
 ) -> Result<Snapshot, String> {
     let service = service.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || service.command(command))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = service.command(command);
+        if result.is_ok() {
+            app.state::<Arc<account::AccountService>>().wake();
+        }
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -161,11 +168,20 @@ async fn daily_totals(
 }
 
 #[tauri::command]
-async fn reset_reports(service: State<'_, TimerService>) -> Result<Snapshot, String> {
+async fn reset_reports(
+    service: State<'_, TimerService>,
+    app: tauri::AppHandle,
+) -> Result<Snapshot, String> {
     let service = service.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || service.reset_reports())
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = service.reset_reports();
+        if result.is_ok() {
+            app.state::<Arc<account::AccountService>>().wake();
+        }
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -507,6 +523,7 @@ pub fn run() {
                     let app = notification.clone();
                     tauri::async_runtime::spawn_blocking(move || {
                         let _ = app.emit("session-completed", &record);
+                        app.state::<Arc<account::AccountService>>().wake();
                         let controls = app.state::<Controls>();
                         let preferences = controls.snapshot().preferences;
                         if app

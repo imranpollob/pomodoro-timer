@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-test('Supabase task sync: isolation, retries, conflicts, tombstones and pagination', async () => {
+test('Supabase tasks and history: isolation, retries, conflicts, tombstones and pagination', async () => {
   const database = new PGlite();
   try {
     // A minimal test-only replacement for Supabase Auth. The production
@@ -23,6 +23,7 @@ test('Supabase task sync: isolation, retries, conflicts, tombstones and paginati
     for (const id of users) await database.query('insert into auth.users values ($1)', [id]);
     const migration = await readFile(new URL('../supabase/migrations/202610210001_task_sync.sql', import.meta.url), 'utf8');
     await database.exec(migration);
+    await database.exec(await readFile(new URL('../supabase/migrations/202610220001_focus_history_sync.sql', import.meta.url), 'utf8'));
     await database.exec('set role authenticated');
     const asUser = async id => { await database.query("select set_config('app.test_user',$1,false)", [id]); };
     const sync = async (changes = [], cursor = 0) => {
@@ -76,10 +77,53 @@ test('Supabase task sync: isolation, retries, conflicts, tombstones and paginati
     assert.equal(page2.has_more, false);
     await assert.rejects(sync(many.slice(0, 101)), /Invalid sync request/);
 
+    const history = async (changes = [], cursor = 0) => {
+      const { rows } = await database.query('select public.sync_app_data($1::jsonb,0,$2::jsonb,$3::bigint) as result', ['[]',JSON.stringify(changes),cursor]);
+      return rows[0].result.history;
+    };
+    const session = () => { const id = randomUUID(); return { kind: 'session', id, deleted: false,
+      payload: { id, phase:'focus',started_unix_ms:100,active_ms:60000,outcome:'completed',task:null } }; };
+    const saved = session();
+    const savedResult = await history([saved]);
+    const savedVersion = savedResult.acknowledged[0].server_version;
+    assert.equal((await history([saved])).acknowledged[0].server_version,savedVersion,'history retries are idempotent');
+    assert.equal((await history([],savedResult.cursor)).changes.length,0);
+    await asUser(users[1]);
+    assert.equal((await history()).changes.length,0,'history is account scoped');
+    await history([{...saved,user_id:users[0]}]);
+    assert.equal((await database.query('select * from public.synced_history')).rows.length,1);
+    await assert.rejects(database.query('delete from public.synced_history'), /permission denied/i);
+    await assert.rejects(database.query("select nextval('public.history_sync_version_seq')"),/permission denied/i);
+    await asUser(users[0]);
+    const removedHistory = await history([{...saved,deleted:true,payload:null}]);
+    assert.equal((await history([saved])).acknowledged[0].deleted,true,'stale device cannot restore reset history');
+    const baselineHistory=removedHistory.cursor;
+    const historyMany=Array.from({length:501},session);
+    for(let i=0;i<historyMany.length;i+=100) await history(historyMany.slice(i,i+100),baselineHistory);
+    const historyPage=await history([],baselineHistory);
+    assert.equal(historyPage.changes.length,500);
+    assert.equal(historyPage.has_more,true);
+    assert.equal((await history([],historyPage.cursor)).changes.length,1);
+    await assert.rejects(history(historyMany.slice(0,101)),/Invalid history sync request/);
+    const bad = session(); bad.payload.active_ms=-1;
+    await assert.rejects(history([bad]),/Invalid session/);
+    for (const [phase,outcome] of [['focus','interrupted'],['stopwatch','finished'],['short_break','skipped'],['long_break','completed']]) {
+      const entry=session(); entry.payload.phase=phase; entry.payload.outcome=outcome;
+      assert.equal((await history([entry])).acknowledged[0].payload.outcome,outcome);
+    }
+    const atomicTask=change('Must roll back');
+    await assert.rejects(database.query('select public.sync_app_data($1::jsonb,0,$2::jsonb,0)',[JSON.stringify([atomicTask]),JSON.stringify([bad])]),/Invalid session/);
+    assert.equal((await database.query('select * from public.synced_tasks where id=$1',[atomicTask.id])).rows.length,0,'invalid history rolls back the entire request');
+    const completionId=randomUUID();
+    const completion={kind:'completion',id:completionId,deleted:false,payload:{id:completionId,task_id:saved.id,completed_unix_ms:200}};
+    assert.equal((await history([completion])).acknowledged[0].kind,'completion');
+
     await asUser('');
     assert.equal((await database.query('select * from public.synced_tasks')).rows.length, 0);
     await assert.rejects(sync(), /Sign in before syncing/);
+    await assert.rejects(history(), /Sign in before syncing/);
     await database.exec('reset role; set role anon');
     await assert.rejects(sync(), /permission denied/i);
+    await assert.rejects(history(), /permission denied/i);
   } finally { await database.close(); }
 });

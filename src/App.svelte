@@ -431,7 +431,7 @@
     finally { busy = false; }
   }
   async function resetReports() {
-    askConfirm('Reset reports?', 'Delete every recorded session and task completion? Totals, reports, streaks, and the last-session summary will be cleared. Your task board will stay as it is. This cannot be undone.', 'Reset reports', async () => {
+    askConfirm('Reset reports?', 'Delete every recorded session and task completion? Totals, reports, streaks, and the last-session summary will be cleared. Your task board will stay as it is. When signed in, these deletions also sync to your other devices. Sessions not yet received from offline devices may appear later. This cannot be undone.', 'Reset reports', async () => {
       try {
         snapshot = await invoke<Snapshot>('reset_reports');
         lastRecordId = snapshot.records[0]?.id ?? null;
@@ -473,7 +473,7 @@
         if (disposed) { desktopStop(); return; } else listeners.push(desktopStop);
         acceptDesktop(await invoke<DesktopState>('get_desktop_state'));
         if (!compact) {
-          const syncedStop = await listen('tasks-synced', () => { void loadTasks().catch(reportError); });
+          const syncedStop = await listen('tasks-synced', () => { void Promise.all([loadTasks(), loadToday(), loadTaskCompletionEvents()]).catch(reportError); refreshReportIfVisible(); });
           if (disposed) syncedStop(); else listeners.push(syncedStop);
           const stop = await listen('finish-requested', () => { if (snapshot?.status !== 'idle' && !snapshot?.pending_save) finishDialog?.showModal(); });
           if (disposed) stop(); else listeners.push(stop);
@@ -669,7 +669,7 @@
         <AccountSync />
         <section class="settings-card data-settings">
           <div class="card-title"><Icon name="history" /><h2>Data &amp; reset</h2></div>
-          <p class="muted">Delete every saved session and task completion. Reports and the streak will be cleared; your task board will stay as it is. This cannot be undone.</p>
+          <p class="muted">Delete every saved session and task completion. Reports and the streak will be cleared; your task board will stay as it is. When signed in, deletions sync to your other devices. This cannot be undone.</p>
           <div class="form-actions"><button class="secondary danger" type="button" onclick={() => void resetReports()}>Reset reports</button></div>
         </section>
         <AppUpdates />

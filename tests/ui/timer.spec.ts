@@ -75,6 +75,13 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
       const handler = listeners.get('tasks-synced');
       if (handler) callbacks.get(handler)?.({ payload: null, id: handler, event: 'tasks-synced' });
     };
+    (window as any).__deliverRemoteHistory = (deleted = false) => {
+      const index = reportRows.findIndex(row => row.id === 'remote-session');
+      if (deleted && index >= 0) reportRows.splice(index, 1);
+      else if (!deleted && index < 0) reportRows.push({ id: 'remote-session', phase: 'focus', started_unix_ms: started + 3_600_000, active_ms: 600_000, outcome: 'completed', task: { id: 'task-remote', title: 'Focus from another device' } });
+      const handler = listeners.get('tasks-synced');
+      if (handler) callbacks.get(handler)?.({ payload: null, id: handler, event: 'tasks-synced' });
+    };
     (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
       transformCallback(callback: (value: unknown) => void) { callbacks.set(++callbackId, callback); return callbackId; },
       unregisterCallback(id: number) { callbacks.delete(id); },
@@ -129,7 +136,7 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
           return structuredClone(account);
         }
         if (command === 'sign_out_account') {
-          account.email = null; account.last_synced_ms = null; account.message = 'Signed out. Your tasks remain on this device.';
+          account.email = null; account.last_synced_ms = null; account.message = 'Signed out. Your tasks and focus history remain on this device.';
           publishAccount(); return structuredClone(account);
         }
         if (command === 'check_for_updates') {
@@ -1023,10 +1030,25 @@ test('signing out retains local tasks and synced changes refresh the task board'
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const account = page.getByRole('region', { name: 'Account & sync', exact: true });
   await account.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await expect(account.getByRole('status')).toHaveText('Signed out. Your tasks remain on this device.');
+  await expect(account.getByRole('status')).toHaveText('Signed out. Your tasks and focus history remain on this device.');
   await expect(account.getByRole('button', { name: 'Sign in with Google', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Tasks', exact: true }).click();
   await expect(page.locator('.task-item-card').filter({ hasText: 'Write tests' })).toBeVisible();
   await expect(page.locator('.task-item-card').filter({ hasText: 'Task from another device' })).toBeVisible();
   expect(browserErrors).toEqual([]);
+});
+
+
+test('synced focus history refreshes visible reports for additions and deletions', async ({ page }) => {
+  await mockDesktop(page, { syncConfigured: true, accountEmail: 'focus@example.com' }); await page.goto('/');
+  await page.getByRole('button', { name: 'Reports', exact: true }).click();
+  await page.getByRole('button', { name: 'Show sessions', exact: true }).click();
+  const table = page.locator('.report-card table');
+  await expect(table.getByRole('row')).toHaveCount(3);
+  await page.evaluate(() => (window as any).__deliverRemoteHistory());
+  await expect(table.getByRole('row')).toHaveCount(4);
+  await expect(table.getByText('Focus from another device')).toBeVisible();
+  await page.evaluate(() => (window as any).__deliverRemoteHistory(true));
+  await expect(table.getByRole('row')).toHaveCount(3);
+  await expect(table.getByText('Focus from another device')).toHaveCount(0);
 });

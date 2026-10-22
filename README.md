@@ -1,6 +1,6 @@
 # Pomodoro Timer
 
-A local desktop focus timer for Windows, macOS, and Linux, built with Tauri 2, Rust, Svelte/TypeScript, and SQLite. App identifier: `com.imranpollob.pomodoro-timer`; version: `1.2.0`.
+A local desktop focus timer for Windows, macOS, and Linux, built with Tauri 2, Rust, Svelte/TypeScript, and SQLite. App identifier: `com.imranpollob.pomodoro-timer`; version: `1.3.0`.
 
 ## Features
 
@@ -10,7 +10,7 @@ A local desktop focus timer for Windows, macOS, and Linux, built with Tauri 2, R
 - Local-date session reports, a three-month task-completion heatmap, and a current streak. Reset reports deletes sessions and completion history while keeping the task board.
 - Light/dark themes, completion sound and volume, notifications, pinning, and saved window placement.
 - Installed version in Settings, with manual update checks and a link to newer GitHub releases.
-- Optional Google sign-in and Supabase task sync, with durable offline edits and deletions.
+- Optional Google sign-in and Supabase sync for tasks and focus history, with durable offline edits and deletions.
 - A single Rust timer authority with transactional persistence, checkpoints, and paused recovery after restart.
 
 ## Run
@@ -73,12 +73,12 @@ Use `python` and the `.exe` suffix on Windows. On headless Linux, prefix the Pyt
 
 Browser tests mock IPC. Verify installed builds separately on each desktop: main/compact/tray controls, keyboard and screen-reader access, audio/notification delivery, sleep/lock, scaling, and monitor changes. Record the revision, OS, architecture, desktop session, scale, and results with the change.
 
-## Google sign-in and task sync setup
+## Google sign-in and sync setup
 
 The app works locally without a Supabase project. Until a project is configured, Settings → Account & sync explains that Google sign-in is unavailable and keeps its sign-in button disabled.
 
 1. Create a **Free** project at [Supabase](https://supabase.com/dashboard). Save the database password in your password manager; the desktop app does not need it.
-2. In the project's **SQL Editor**, run [the task sync migration](supabase/migrations/202610210001_task_sync.sql). This creates the task table, access policy and transactional `sync_tasks` function. The PostgreSQL tests use PGlite and run with `npm run test:sync-schema`.
+2. In the project's **SQL Editor**, run [the task sync migration](supabase/migrations/202610210001_task_sync.sql). Then run [the focus history migration](supabase/migrations/202610220001_focus_history_sync.sql). Existing projects that already ran the task migration only need the new history migration. These create account-isolated tables and transactional sync functions. The PostgreSQL tests use PGlite and run with `npm run test:sync-schema`.
 3. In **Authentication → URL Configuration → Redirect URLs**, add exactly:
    ```text
    http://127.0.0.1:43821/auth/callback/*
@@ -95,11 +95,13 @@ The app works locally without a Supabase project. Until a project is configured,
 
 Settings → Account & sync opens Google sign-in in the system browser using PKCE. The app stores only the refresh token in the OS credential store: macOS Keychain, Windows Credential Manager, or Linux Secret Service. A locked/unavailable store is reported as an error; tokens are never saved in SQLite or browser storage. Linux sign-in requires an available, unlocked Secret Service provider such as GNOME Keyring or KWallet.
 
-Task names, status and deletions sync after edits and at roughly 30-second intervals while signed in. **Sync now** triggers a manual pass. The first sign-in uploads the tasks already on that device and downloads the account's tasks. Focus sessions, completion-history reports, streaks and device preferences remain local in this version.
+Task names, status and deletions sync after edits and at roughly 30-second intervals while signed in. **Sync now** triggers a manual pass. Saved sessions and task-completion events also sync automatically, including all existing history. Reports, totals and streaks use the merged history on each device. The running timer and device preferences stay local. The first sync uploads this device's saved tasks and history and downloads the account's data.
 
 Edits are queued durably in SQLite, including while signed out or offline. Server revisions detect concurrent changes without relying on device clocks. When two devices edit the same task from an older revision, the server's existing copy wins and the app reports the conflict. Deletion markers remain on the server so stale offline edits do not resurrect deleted tasks. Requests can be retried without creating duplicate tasks, and edits made during an upload remain queued.
 
-A local profile is bound to the first signed-in account and project. Signing out keeps its tasks on the device; it does not erase them or sign out other devices. Signing into a different account/project cannot upload that profile's tasks. Use a separate `POMODORO_DATA_DIR` profile for another account. A cloud project and Google OAuth configuration are required to test real sign-in and cross-device sync; the automated tests use isolated local databases and mocked UI sessions.
+History entries use stable UUIDs, so retries do not double count sessions or task completions. **Reset reports** queues deletions for every session and completion currently saved on that device; those deletions propagate to signed-in devices and cannot be undone. History not yet received from an offline device may still arrive later. Deletion markers are retained to prevent stale devices from restoring deleted records. The schema test covers both migrations.
+
+A local profile is bound to the first signed-in account and project. Signing out keeps its tasks and focus history on the device; it does not erase them or sign out other devices. Signing into a different account/project cannot upload that profile's tasks. Use a separate `POMODORO_DATA_DIR` profile for another account. A cloud project and Google OAuth configuration are required to test real sign-in and cross-device sync; the automated tests use isolated local databases and mocked UI sessions.
 
 ## Profiles and backups
 
@@ -131,7 +133,7 @@ In PowerShell, use `python` and set `$env:POMODORO_DATA_DIR` to the demo profile
 - Compact options include Close compact, Open main, Pin, and Sound. Drag the time or empty strip to move the window. Escape closes compact; Enter/double-click on the time opens main. Space starts/pauses/resumes. Long stopwatch hours grow the strip automatically.
 - Settings save automatically. Failed session writes remain visible and require retry; a crash can lose time since the last checkpoint.
 - Notifications and sound depend on OS settings and devices. API success or browser tests do not establish physical delivery or installed-app accessibility.
-- Projects, session-history sync, legacy import, data export, custom themes, and automatic updates are outside the current scope.
+- Projects, legacy import, data export, custom themes, and automatic updates are outside the current scope.
 
 ## Code layout and contributions
 

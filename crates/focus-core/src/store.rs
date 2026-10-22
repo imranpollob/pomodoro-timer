@@ -24,7 +24,7 @@ impl Store {
         let version: u32 = connection
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(|e| e.to_string())?;
-        if version > 5 {
+        if version > 7 {
             return Err("Database was created by a newer app; it was left intact.".into());
         }
         if version == 0 {
@@ -93,6 +93,18 @@ impl Store {
                     UPDATE tasks SET sync_dirty=1, sync_change_id=lower(hex(randomblob(16))) WHERE id=NEW.id;
                 END;
                 PRAGMA user_version=5; COMMIT;").map_err(|e| e.to_string())?;
+        }
+        if version < 6 {
+            // Early schema-five builds did not include the durable retry table.
+            // Keep existing attempts when upgrading builds that already have it.
+            connection.execute_batch("BEGIN IMMEDIATE;
+                CREATE TABLE IF NOT EXISTS task_sync_attempts (task_id TEXT PRIMARY KEY, change_id TEXT NOT NULL, payload TEXT NOT NULL);
+                PRAGMA user_version=6; COMMIT;").map_err(|e| e.to_string())?;
+        }
+        if version < 7 {
+            connection
+                .execute_batch(include_str!("history_schema.sql"))
+                .map_err(|e| e.to_string())?;
         }
         Ok(Self { connection })
     }
@@ -478,7 +490,7 @@ mod tests {
                 .connection
                 .query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
                 .unwrap(),
-            5
+            7
         );
         drop(store);
         std::fs::remove_file(path).unwrap();

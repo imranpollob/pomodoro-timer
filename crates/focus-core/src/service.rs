@@ -123,8 +123,10 @@ impl TimerService {
                             }
                             let result = store
                                 .apply_task_sync(&account, &changes, &engine, clock.monotonic_ms())
-                                .map(|candidate| {
+                                .and_then(|candidate| {
+                                    let imported_records = store.records()?;
                                     engine = candidate;
+                                    records = imported_records;
                                     revision += 1;
                                     publish(Snapshot {
                                         timer: engine.view(clock.monotonic_ms()),
@@ -135,6 +137,7 @@ impl TimerService {
                                         records: records.clone(),
                                         interruption: interruption.clone(),
                                     });
+                                    Ok(())
                                 });
                             let _ = reply.send(result);
                             continue;
@@ -593,6 +596,55 @@ mod tests {
             1000
         }
     }
+    #[test]
+    fn imported_history_refreshes_snapshot_and_preserves_running_timer() {
+        use crate::history_sync::{CloudHistory, HistoryReply};
+        let service = TimerService::spawn(
+            Store::open(Path::new(":memory:")).unwrap(),
+            Arc::new(FakeClock(AtomicU64::new(0))),
+            |_| {},
+            |_| {},
+        )
+        .unwrap();
+        service.command(Command::Toggle).unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut entry = CloudHistory {
+            kind: "session".into(),
+            id: id.clone(),
+            deleted: false,
+            server_version: 1,
+            payload: Some(
+                serde_json::json!({"id":id,"phase":"stopwatch","started_unix_ms":100,"active_ms":60000,"outcome":"finished","task":null}),
+            ),
+        };
+        let mut reply = SyncReply {
+            acknowledged: vec![],
+            changes: vec![],
+            cursor: 0,
+            has_more: false,
+            conflicts: 0,
+            history: HistoryReply {
+                acknowledged: vec![],
+                changes: vec![entry.clone()],
+                cursor: 1,
+                has_more: false,
+            },
+        };
+        service
+            .apply_task_sync("account".into(), reply.clone())
+            .unwrap();
+        assert_eq!(service.snapshot().unwrap().records[0].id, id);
+        assert_eq!(service.snapshot().unwrap().timer.status, "running");
+        entry.deleted = true;
+        entry.payload = None;
+        entry.server_version = 2;
+        reply.history.changes = vec![entry];
+        reply.history.cursor = 2;
+        service.apply_task_sync("account".into(), reply).unwrap();
+        assert!(service.snapshot().unwrap().records.is_empty());
+        assert_eq!(service.snapshot().unwrap().timer.status, "running");
+    }
+
     #[test]
     fn reset_reports_clears_cached_records_and_published_snapshot() {
         let clock = Arc::new(FakeClock(AtomicU64::new(0)));

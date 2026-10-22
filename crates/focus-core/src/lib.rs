@@ -1,4 +1,5 @@
 //! Clock-injected timer domain and transactional persistence.
+pub mod history_sync;
 pub mod service;
 pub mod store;
 pub mod sync;

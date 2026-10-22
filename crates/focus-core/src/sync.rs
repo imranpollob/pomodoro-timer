@@ -25,6 +25,8 @@ pub struct TaskChange {
 pub struct SyncBatch {
     pub changes: Vec<TaskChange>,
     pub cursor: i64,
+    pub history_changes: Vec<crate::history_sync::CloudHistory>,
+    pub history_cursor: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -41,6 +43,7 @@ pub struct SyncReply {
     pub cursor: i64,
     pub has_more: bool,
     pub conflicts: usize,
+    pub history: crate::history_sync::HistoryReply,
 }
 
 impl Store {
@@ -120,9 +123,12 @@ impl Store {
                 attempted.push(change);
             }
         }
+        let (history_changes, history_cursor) = self.history_batch()?;
         Ok(SyncBatch {
             changes: attempted,
             cursor,
+            history_changes,
+            history_cursor,
         })
     }
 
@@ -154,7 +160,9 @@ impl Store {
         if reply.cursor < old_cursor {
             return Err("The server returned an outdated sync cursor.".into());
         }
+        self.validate_history_reply(&reply.history)?;
         let tx = self.connection.transaction().map_err(|e| e.to_string())?;
+        crate::history_sync::apply_history(&tx, &reply.history)?;
         for ack in &reply.acknowledged {
             let current: Option<String> = tx
                 .query_row(
@@ -259,6 +267,7 @@ mod tests {
             cursor: version,
             has_more: false,
             conflicts: 0,
+            history: Default::default(),
         }
     }
 
@@ -400,6 +409,33 @@ mod tests {
     }
 
     #[test]
+    fn upgrading_early_version_five_creates_retry_table_without_losing_tasks() {
+        let path =
+            std::env::temp_dir().join(format!("pomodoro-v5-sync-{}.sqlite3", uuid::Uuid::new_v4()));
+        let store = Store::open(&path).unwrap();
+        let original = store.create_task("Existing task", 100).unwrap();
+        store
+            .connection
+            .execute_batch("DROP TRIGGER sessions_history_insert; DROP TRIGGER sessions_history_delete; DROP TRIGGER completions_history_insert; DROP TRIGGER completions_history_delete; DROP TABLE history_sync; DROP TABLE task_sync_attempts; PRAGMA user_version=5;")
+            .unwrap();
+        drop(store);
+
+        let upgraded = Store::open(&path).unwrap();
+        assert_eq!(upgraded.tasks().unwrap(), vec![original.clone()]);
+        let change = upgraded.sync_batch("account-a").unwrap().changes.remove(0);
+        assert_eq!(change.task.id, original.id);
+        drop(upgraded);
+
+        let reopened = Store::open(&path).unwrap();
+        assert_eq!(
+            reopened.sync_batch("account-a").unwrap().changes[0].change_id,
+            change.change_id
+        );
+        drop(reopened);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn upgrading_version_four_preserves_existing_tasks_and_queues_them() {
         let path =
             std::env::temp_dir().join(format!("pomodoro-v4-sync-{}.sqlite3", uuid::Uuid::new_v4()));
@@ -408,7 +444,7 @@ mod tests {
         store
             .connection
             .execute_batch(
-                "DROP TRIGGER tasks_sync_insert; DROP TRIGGER tasks_sync_update; DROP TABLE task_sync_attempts;
+                "DROP TRIGGER sessions_history_insert; DROP TRIGGER sessions_history_delete; DROP TRIGGER completions_history_insert; DROP TRIGGER completions_history_delete; DROP TABLE history_sync; DROP TRIGGER tasks_sync_insert; DROP TRIGGER tasks_sync_update; DROP TABLE task_sync_attempts;
             ALTER TABLE tasks DROP COLUMN sync_version; ALTER TABLE tasks DROP COLUMN sync_dirty;
             ALTER TABLE tasks DROP COLUMN sync_change_id; PRAGMA user_version=4;",
             )
