@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-async function mockDesktop(page: Page, options: { seconds: number; emptyReports?: boolean; recovered?: boolean; interruption?: string | null; opacity?: number; lastRecord?: boolean; platform?: string; failTaskStatusOnce?: boolean; taskTitle?: string; denseHistory?: boolean } = { seconds: 1500 }) {
+async function mockDesktop(page: Page, options: { seconds: number; emptyReports?: boolean; recovered?: boolean; interruption?: string | null; opacity?: number; lastRecord?: boolean; platform?: string; failTaskStatusOnce?: boolean; taskTitle?: string; denseHistory?: boolean; extraTasks?: number; resizeDelay?: number } = { seconds: 1500 }) {
   await page.addInitScript(options => {
     (window as unknown as { isTauri: boolean }).isTauri = true;
     const callbacks = new Map<number, (value: unknown) => void>();
@@ -24,6 +24,9 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
       { id: 'task-1', title: options.taskTitle ?? 'Write tests', status: 'todo', created_unix_ms: started, updated_unix_ms: started },
       { id: 'task-2', title: 'Review requirements', status: 'done', created_unix_ms: started, updated_unix_ms: started },
     ];
+    for (let index = 0; index < (options.extraTasks ?? 0); index++) {
+      tasks.push({ id: `extra-${index}`, title: `Task ${index + 1}`, status: 'todo', created_unix_ms: started, updated_unix_ms: started });
+    }
     const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); yesterday.setHours(12, 0, 0, 0);
     const today = new Date(); today.setHours(12, 0, 0, 0);
     const taskCompletionEvents = [
@@ -39,6 +42,12 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
       }
     }
     const listeners = new Map<string, number>();
+    (window as any).__setSeconds = (seconds: number) => {
+      state.display_seconds = seconds;
+      state.revision++;
+      const handler = listeners.get('timer-state');
+      if (handler) callbacks.get(handler)?.({ payload: structuredClone(state), id: handler, event: 'timer-state' });
+    };
     let finishCount = 0;
     let failTaskStatus = options.failTaskStatusOnce ?? false;
     (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
@@ -48,6 +57,18 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
       async invoke(command: string, args: Record<string, any> = {}) {
         if (command === 'plugin:event|listen') { listeners.set(args.event, args.handler); return args.handler; }
         if (command === 'plugin:event|unlisten') return;
+        if (command === 'plugin:window|start_dragging') { (window as any).__dragCalls = ((window as any).__dragCalls ?? 0) + 1; return; }
+        if (command === 'open_main') { (window as any).__openMainCalls = ((window as any).__openMainCalls ?? 0) + 1; return; }
+        if (command === 'resize_compact') {
+          const w = window as any;
+          w.__resizesActive = (w.__resizesActive ?? 0) + 1;
+          w.__maxResizesActive = Math.max(w.__maxResizesActive ?? 0, w.__resizesActive);
+          (w.__resizeRequests ??= []).push(args);
+          if (options.resizeDelay) await new Promise(resolve => setTimeout(resolve, options.resizeDelay));
+          w.__compactSize = args;
+          w.__resizesActive--;
+          return;
+        }
         if (command === 'compact_menu') {
           const w = window as any; (w.__menuCalls ??= []).push({ x: args.x, y: args.y });
           return new Promise<void>(resolve => { w.__closeMenu = resolve; });
@@ -116,8 +137,8 @@ test('main timer pauses/resumes and finish dialog preserves keyboard focus', asy
   await page.screenshot({ path: 'test-results/main-timer.png' });
 });
 
-test('compact has play and options buttons and fits 200 by 44', async ({ page }) => {
-  await mockDesktop(page); await page.setViewportSize({ width: 200, height: 44 }); await page.goto('/?view=compact');
+test('compact has play and options buttons and fits 170 by 44', async ({ page }) => {
+  await mockDesktop(page); await page.setViewportSize({ width: 170, height: 44 }); await page.goto('/?view=compact');
   await expect(page.locator('button')).toHaveCount(2);
   const options = page.getByRole('button', { name: 'Options', exact: true });
   await expect(options).toBeVisible();
@@ -125,14 +146,66 @@ test('compact has play and options buttons and fits 200 by 44', async ({ page })
   await expect(action).toHaveAccessibleName('Start focus');
   await action.click(); await expect(action).toHaveAccessibleName('Pause');
   await page.keyboard.press('Space'); await expect(action).toHaveAccessibleName('Resume');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(200);
-  const box = await options.boundingBox(); expect(box!.x + box!.width).toBeLessThanOrEqual(200);
-  expect(box!.width).toBeLessThan((await action.boundingBox())!.width);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(170);
+  const strip = (await page.locator('.compact').boundingBox())!;
+  const time = (await page.locator('.compact-time').boundingBox())!;
+  const actionBox = (await action.boundingBox())!;
+  const box = (await options.boundingBox())!;
+  expect(strip.width).toBe(170);
+  expect(time.x + time.width + 8).toBeLessThanOrEqual(actionBox.x);
+  expect(actionBox.x + actionBox.width + 4).toBeLessThanOrEqual(box.x);
+  expect(box.x + box.width).toBeLessThanOrEqual(strip.x + strip.width - 6);
+  expect(box.y).toBeGreaterThanOrEqual(strip.y + 1);
+  expect(box.y + box.height).toBeLessThanOrEqual(strip.y + strip.height - 1);
+  expect(box.width).toBe(actionBox.width);
   await page.screenshot({ path: 'test-results/compact-timer.png' });
 });
 
+test('compact zero timer keeps both controls clickable at desktop display scales', async ({ browser }) => {
+  for (const scale of [1, 1.25, 1.5, 2]) {
+    const context = await browser.newContext({ viewport: { width: 170, height: 44 }, deviceScaleFactor: scale });
+    try {
+      const page = await context.newPage();
+      await mockDesktop(page, { seconds: 0, platform: 'linux' });
+      await page.goto('/?view=compact');
+      await expect(page.locator('.compact')).toHaveAttribute('data-compact-ui', '2');
+      await expect(page.locator('.compact-time')).toHaveText('00:00');
+      const group = (await page.locator('.compact-controls').boundingBox())!;
+      expect(group.width).toBe(68);
+      for (const [selector, x, width] of [
+        ['.compact-action:not(.compact-options)', 96, 32],
+        ['.compact-options', 132, 32],
+      ] as const) {
+        const button = page.locator(selector);
+        await expect(button).toBeVisible();
+        const box = (await button.boundingBox())!;
+        // Fractional display scales can round a border to a device pixel.
+        expect(box.x).toBeCloseTo(x, 0);
+        expect({ y: box.y, width: box.width, height: box.height }).toEqual({ y: 6, width, height: 32 });
+        expect(box.x).toBeGreaterThanOrEqual(group.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(group.x + group.width);
+        expect(await button.evaluate(element => {
+          const box = element.getBoundingClientRect();
+          return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+        })).toBe(true);
+      }
+      await page.getByRole('button', { name: 'Start focus', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Options', exact: true }).click();
+      await expect.poll(() => page.evaluate(() => (window as any).__menuCalls?.length ?? 0)).toBe(1);
+      await page.evaluate(() => (window as any).__closeMenu());
+      await page.waitForTimeout(350);
+      await page.getByRole('button', { name: 'Options', exact: true }).focus();
+      await page.keyboard.press('Space');
+      await expect.poll(() => page.evaluate(() => (window as any).__menuCalls?.length ?? 0)).toBe(2);
+      await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+      if (scale === 1) await page.screenshot({ path: 'test-results/compact-zero.png' });
+    } finally { await context.close(); }
+  }
+});
+
 test('compact options button opens the menu at a fixed spot and right-click does not', async ({ page }) => {
-  await mockDesktop(page); await page.setViewportSize({ width: 200, height: 44 }); await page.goto('/?view=compact');
+  await mockDesktop(page); await page.setViewportSize({ width: 170, height: 44 }); await page.goto('/?view=compact');
   const calls = () => page.evaluate(() => (window as any).__menuCalls ?? []);
   await page.locator('.compact').click({ button: 'right', position: { x: 5, y: 5 } });
   await page.locator('.compact-time').click({ button: 'right' });
@@ -149,6 +222,43 @@ test('compact options button opens the menu at a fixed spot and right-click does
   await options.click({ position: { x: 4, y: 4 } });
   await expect.poll(calls).toHaveLength(2);
   expect((await calls())[1]).toEqual({ x: box.x, y: 44 });
+});
+
+test('Linux compact time and background drag without selecting text or activating buttons', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, platform: 'linux' });
+  await page.setViewportSize({ width: 170, height: 44 }); await page.goto('/?view=compact');
+  const time = page.locator('.compact-time');
+  const dragCalls = () => page.evaluate(() => (window as any).__dragCalls ?? 0);
+  const openCalls = () => page.evaluate(() => (window as any).__openMainCalls ?? 0);
+  await expect(time).toHaveCSS('user-select', 'none');
+  await expect(time).toHaveCSS('line-height', '32px');
+  const timeBox = (await time.boundingBox())!;
+  await page.mouse.move(timeBox.x + 4, timeBox.y + 16);
+  await page.mouse.down();
+  await page.mouse.move(timeBox.x + timeBox.width - 4, timeBox.y + 16, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(dragCalls).toBe(1);
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('');
+  expect(await openCalls()).toBe(0);
+  await page.locator('.compact').click({ position: { x: 3, y: 3 } });
+  await expect.poll(dragCalls).toBe(2);
+  await time.click({ button: 'right' });
+  expect(await dragCalls()).toBe(2);
+  const action = page.getByRole('button', { name: 'Start focus', exact: true });
+  await action.locator('svg').click();
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  expect(await dragCalls()).toBe(2);
+  await time.dblclick();
+  await expect.poll(openCalls).toBe(1);
+  await time.focus(); await time.press('Enter');
+  await expect.poll(openCalls).toBe(2);
+  for (const selector of ['.compact-time', '.compact-action:not(.compact-options)', '.compact-options']) {
+    const box = (await page.locator(selector).boundingBox())!;
+    expect(box.y).toBe(6);
+    expect(box.height).toBe(32);
+    expect(box.x + box.width).toBeLessThanOrEqual(170);
+  }
+  await page.screenshot({ path: 'test-results/linux-compact.png' });
 });
 
 test('timer preferences autosave and invalid values are skipped', async ({ page }) => {
@@ -269,15 +379,33 @@ test('desktop preferences autosave pinning, tray, notifications and appearance',
 });
 
 test('compact fits long stopwatch hours beside both buttons', async ({ page }) => {
-  await mockDesktop(page, { seconds: 360_001 });
-  await page.setViewportSize({ width: 400, height: 80 }); await page.goto('/?view=compact');
+  await mockDesktop(page, { seconds: 36_000_001 });
+  await page.setViewportSize({ width: 170, height: 44 }); await page.goto('/?view=compact');
   const time = page.locator('.compact-time');
-  await expect(time).toHaveText('100:00:01');
+  await expect(time).toHaveText('10000:00:01');
   await expect(time).toHaveCSS('font-size', '25px');
-  await expect(page.locator('button')).toHaveCount(2);
-  const digits = await time.boundingBox(); const button = await page.locator('button').first().boundingBox();
-  expect(digits!.x + digits!.width).toBeLessThanOrEqual(button!.x);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(400);
+  await expect.poll(() => page.evaluate(() => (window as any).__compactSize?.width ?? 0)).toBeGreaterThan(170);
+  const requested = await page.evaluate(() => (window as any).__compactSize);
+  await page.setViewportSize(requested);
+  const digits = (await page.locator('.compact-digits').boundingBox())!;
+  const button = (await page.locator('button').first().boundingBox())!;
+  const options = (await page.getByRole('button', { name: 'Options', exact: true }).boundingBox())!;
+  expect(digits.x + digits.width + 8).toBeLessThanOrEqual(button.x);
+  expect(options.x + options.width).toBe(requested.width - 6);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(requested.width);
+});
+
+test('compact serializes delayed native resizes and finishes at the latest digit width', async ({ page }) => {
+  await mockDesktop(page, { seconds: 0, resizeDelay: 250 });
+  await page.setViewportSize({ width: 170, height: 44 });
+  await page.goto('/?view=compact');
+  await expect(page.locator('.compact-time')).toHaveText('00:00');
+  await page.evaluate(() => (window as any).__setSeconds(36_000_001));
+  await expect.poll(() => page.evaluate(() => ((window as any).__resizeRequests ?? []).some((size: any) => size.width > 170))).toBe(true);
+  await page.evaluate(() => (window as any).__setSeconds(0));
+  await expect(page.locator('.compact-time')).toHaveText('00:00');
+  await expect.poll(() => page.evaluate(() => ({ width: (window as any).__compactSize?.width, active: (window as any).__resizesActive }))).toEqual({ width: 170, active: 0 });
+  expect(await page.evaluate(() => (window as any).__maxResizesActive)).toBe(1);
 });
 
 test('compact background follows the opacity setting', async ({ page }) => {
@@ -377,6 +505,48 @@ test('focus task picker only shows when the timer is idle', async ({ page }) => 
   await expect(taskSelect).toBeVisible();
 });
 
+test('Linux focus task menu has bounded sizing and supports mouse and keyboard selection', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, platform: 'linux', taskTitle: 'A very long focus task title '.repeat(8), extraTasks: 12 });
+  await page.goto('/');
+  const picker = page.getByRole('combobox', { name: 'Task for the next session' });
+  for (const theme of ['dark', 'light']) {
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByLabel('Appearance theme').selectOption(theme);
+    await page.getByRole('button', { name: 'Timer', exact: true }).click();
+    await picker.click();
+    const menu = page.getByRole('listbox', { name: 'Focus task' });
+    const controlBox = (await picker.boundingBox())!;
+    const menuBox = (await menu.boundingBox())!;
+    expect(controlBox.height).toBe(36);
+    expect(menuBox.width).toBe(controlBox.width);
+    expect(menuBox.height).toBeLessThanOrEqual(224);
+    expect(await menu.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+    expect(await page.getByRole('option').count()).toBe(14); // Done tasks are excluded.
+    expect((await page.getByRole('option').first().boundingBox())!.height).toBe(36);
+    await page.screenshot({ path: `test-results/focus-task-menu-${theme}.png` });
+    await picker.press('ArrowDown');
+    await picker.press('Enter');
+    await expect(picker).toContainText('A very long focus task title');
+    await expect(menu).toHaveCount(0);
+    await expect(picker).toBeFocused();
+    await picker.press('ArrowDown');
+    await picker.press('End');
+    await picker.press('Escape');
+    await expect(picker).toContainText('A very long focus task title');
+    await picker.click();
+    await page.getByRole('option', { name: 'No task selected', exact: true }).click();
+    await expect(picker).toContainText('No task selected');
+    await picker.click();
+    await picker.press('Tab');
+    await expect(menu).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'New task', exact: true })).toBeFocused();
+    await picker.click();
+    await page.getByRole('heading', { name: 'Timer', exact: true }).click();
+    await expect(menu).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(960);
+  }
+});
+
 test('recovery and interruption banners dismiss without losing the timer', async ({ page }) => {
   await mockDesktop(page, { seconds: 1500, recovered: true, interruption: 'sleep' });
   await page.goto('/');
@@ -474,6 +644,7 @@ test('tasks move across the board and completion feedback updates the report hea
   await task.locator('.task-card-title').dragTo(page.locator('.column-in_progress'));
   await expect(page.locator('.column-in_progress')).toContainText('Write tests');
   await page.getByRole('button', { name: 'Timer', exact: true }).click();
+  await page.getByLabel('Task for the next session').click();
   await expect(page.getByRole('option', { name: 'In progress · Write tests', exact: true })).toBeAttached();
   await expect(page.getByRole('option', { name: /Review requirements/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Tasks', exact: true }).click();
@@ -489,6 +660,7 @@ test('tasks move across the board and completion feedback updates the report hea
   await day.focus(); await expect(day).toBeFocused();
   await page.screenshot({ path: 'test-results/task-reports.png', fullPage: true });
   await page.getByRole('button', { name: 'Timer', exact: true }).click();
+  await page.getByLabel('Task for the next session').click();
   await expect(page.getByRole('option', { name: /Write tests/ })).toHaveCount(0);
 });
 
@@ -549,7 +721,8 @@ test('Linux settings show tray close and desktop notification hint', async ({ pa
 
 test('timer controls stay inside the fixed window in both themes and all timer states', async ({ page }) => {
   await mockDesktop(page, { seconds: 1500, taskTitle: 'Review the release notes and confirm keyboard access for every control. '.repeat(2).slice(0, 120) }); await page.goto('/');
-  await page.getByLabel('Task for the next session').selectOption('task-1');
+  await page.getByLabel('Task for the next session').click();
+  await page.getByRole('option', { name: /Review the release notes/ }).click();
   for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByLabel('Appearance theme').selectOption(theme);

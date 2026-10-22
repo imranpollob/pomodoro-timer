@@ -12,6 +12,7 @@
   } from './lib/types';
   import Compact from './parts/Compact.svelte';
   import Icon from './parts/Icon.svelte';
+  import TaskPicker from './parts/TaskPicker.svelte';
 
   const navigation = [
     { id: 'timer', label: 'Timer', icon: 'timer' },
@@ -521,10 +522,8 @@
             </div>
             {#if snapshot.active_task}<p class="active-task" title={snapshot.active_task.title}>Current session: <strong>{snapshot.active_task.title}</strong></p>{/if}
             {#if snapshot.status === 'idle'}<div class="task-select"><span class="task-select-label">Focus task</span>
-              <select aria-label="Task for the next session" value={snapshot.selected_task?.id ?? ''} disabled={busy} onchange={event => void setTask(event.currentTarget.value)}>
-                <option value="">No task selected</option>
-                {#each tasks.filter(task => task.status !== 'done') as task (task.id)}<option value={task.id}>{statusLabel(task.status)} · {truncate(task.title)}</option>{/each}
-              </select>
+              <TaskPicker value={snapshot.selected_task?.id ?? ''} disabled={busy} onchange={value => void setTask(value)}
+                options={[{ value: '', label: 'No task selected' }, ...tasks.filter(task => task.status !== 'done').map(task => ({ value: task.id, label: `${statusLabel(task.status)} · ${task.title}` }))]} />
               <button type="button" class="task-new" onclick={openNewTask}><Icon name="plus" size={16} />New task</button>
             </div>{/if}
             <div class="timer-face" class:break-phase={snapshot.phase.includes('break')} role="group" aria-label={`${phaseLabel[snapshot.phase]} timer`}>

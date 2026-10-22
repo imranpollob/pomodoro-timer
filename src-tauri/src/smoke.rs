@@ -22,7 +22,7 @@ pub fn start(app: tauri::AppHandle) {
         let result = probe(&app);
         let payload = match &result {
             Ok(()) => {
-                serde_json::json!({"passed": true, "checks": ["main/compact rendered controls and real IPC", "finish dialog", "SQLite completion/checkpoint", "native pinning", "placement persistence/clamping", "desktop preference persistence", "Windows suspend/lock (Windows only)"]})
+                serde_json::json!({"passed": true, "checks": ["main/compact rendered controls and real IPC", "compact control bounds and hit testing at zero and long hours", "finish dialog", "SQLite completion/checkpoint", "native pinning", "placement persistence/clamping", "desktop preference persistence", "Windows suspend/lock (Windows only)"]})
             }
             Err(error) => serde_json::json!({"passed": false, "error": error}),
         };
@@ -120,7 +120,32 @@ fn probe(app: &tauri::AppHandle) -> Result<(), String> {
     ui_step(
         app,
         "compact",
-        "await until(() => getComputedStyle(document.querySelector('.compact-time')).fontSize === '25px');",
+        r#"await until(() => getComputedStyle(document.querySelector('.compact-time')).fontSize === '25px');
+        if (document.querySelector('.compact').dataset.compactUi !== '2') throw Error('Compact rewrite was not loaded');
+        const digits = document.querySelector('.compact-digits');
+        const original = digits.textContent;
+        for (const display of ['00:00', '10000:00:01', original]) {
+        digits.textContent = display;
+        await until(() => {
+            const stripWidth = document.querySelector('.compact').getBoundingClientRect().width;
+            const timeWidth = document.querySelector('.compact-time').getBoundingClientRect().width;
+            return innerWidth === Math.max(170, Math.ceil(digits.getBoundingClientRect().width + stripWidth - timeWidth + 2));
+        });
+        const strip = document.querySelector('.compact').getBoundingClientRect();
+        const time = document.querySelector('.compact-time').getBoundingClientRect();
+        const controls = Array.from(document.querySelectorAll('.compact-action'));
+        const boxes = controls.map(button => button.getBoundingClientRect());
+        const group = document.querySelector('.compact-controls').getBoundingClientRect();
+        if (strip.width > innerWidth || strip.height > innerHeight ||
+            group.right > strip.right - 1 || group.width !== 68 ||
+            boxes.some(box => box.left < group.left || box.right > group.right) ||
+            time.right > boxes[0].left || digits.getBoundingClientRect().right > time.right || boxes[0].right > boxes[1].left ||
+            boxes.some(box => box.left < strip.left + 1 || box.right > strip.right - 1 || box.top < strip.top + 1 || box.bottom > strip.bottom - 1) ||
+            controls.some((button, index) => {
+                const box = boxes[index];
+                return !button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+            })) throw Error('Compact controls overflow or cannot receive clicks: ' + JSON.stringify({ viewport: [innerWidth, innerHeight], strip, time, boxes }));
+        }"#,
     )?;
     geometry::ensure_visible(&compact, Some((1_000_000, 1_000_000)))?;
     app.state::<geometry::GeometryService>()

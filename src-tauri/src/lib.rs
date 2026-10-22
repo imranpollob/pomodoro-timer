@@ -151,7 +151,7 @@ async fn report_records(
 #[cfg(target_os = "linux")]
 fn size_compact(window: &tauri::WebviewWindow, width: f64, height: f64) -> Result<(), String> {
     window
-        .set_min_size(Some(tauri::LogicalSize::new(200.0, 44.0)))
+        .set_min_size(Some(tauri::LogicalSize::new(170.0, 44.0)))
         .map_err(|e| e.to_string())?;
     window
         .set_max_size(Some(tauri::LogicalSize::new(1200.0, 300.0)))
@@ -242,7 +242,7 @@ fn open_compact(app: tauri::AppHandle) -> Result<(), String> {
             .state::<TimerService>()
             .preference("windows")
             .map(|raw| geometry::compact_size_from_pref(raw.as_deref()))
-            .unwrap_or((200.0, 44.0));
+            .unwrap_or((170.0, 44.0));
         size_compact(&compact, width, height)?;
     }
     let _ = app.emit("compact-shown", ());
@@ -262,7 +262,7 @@ fn close_compact(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn resize_compact(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
-    if !(200.0..=1200.0).contains(&width) || !(44.0..=300.0).contains(&height) {
+    if !(170.0..=1200.0).contains(&width) || !(44.0..=300.0).contains(&height) {
         return Err("Invalid compact size".into());
     }
     let window = app

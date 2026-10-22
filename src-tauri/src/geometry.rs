@@ -14,7 +14,7 @@ pub struct Placement {
 impl Placement {
     fn validate(&self, label: &str) -> Result<(), String> {
         let (min_w, min_h, max_w, max_h) = if label == "compact" {
-            (200.0, 44.0, 1200.0, 300.0)
+            (170.0, 44.0, 1200.0, 300.0)
         } else if label == "main" {
             (660.0, 520.0, 8192.0, 8192.0)
         } else {
@@ -138,7 +138,7 @@ impl GeometryService {
     }
 }
 
-/// Persisted compact size from the windows preference, or 200x44 when the
+/// Persisted compact size from the windows preference, or 170x44 when the
 /// preference is absent, corrupt, or fails validation.
 ///
 /// Only Linux re-applies the size after showing the strip; other platforms
@@ -149,7 +149,7 @@ pub fn compact_size_from_pref(raw: Option<&str>) -> (f64, f64) {
         .and_then(|map| map.get("compact").cloned())
         .filter(|placement| placement.validate("compact").is_ok())
         .map(|placement| (placement.width, placement.height))
-        .unwrap_or((200.0, 44.0))
+        .unwrap_or((170.0, 44.0))
 }
 
 pub fn restore(window: &WebviewWindow, placement: &Placement) -> Result<(), String> {
@@ -212,21 +212,21 @@ mod tests {
     }
     #[test]
     fn compact_size_pref_falls_back_to_default() {
-        assert_eq!(compact_size_from_pref(None), (200.0, 44.0));
-        assert_eq!(compact_size_from_pref(Some("not json")), (200.0, 44.0));
-        assert_eq!(compact_size_from_pref(Some("{}")), (200.0, 44.0));
+        assert_eq!(compact_size_from_pref(None), (170.0, 44.0));
+        assert_eq!(compact_size_from_pref(Some("not json")), (170.0, 44.0));
+        assert_eq!(compact_size_from_pref(Some("{}")), (170.0, 44.0));
         assert_eq!(
             compact_size_from_pref(Some(
                 r#"{"main":{"x":0,"y":0,"width":960.0,"height":680.0}}"#
             )),
-            (200.0, 44.0)
+            (170.0, 44.0)
         );
         // Invalid sizes never escape validation.
         assert_eq!(
             compact_size_from_pref(Some(
                 r#"{"compact":{"x":0,"y":0,"width":10.0,"height":10.0}}"#
             )),
-            (200.0, 44.0)
+            (170.0, 44.0)
         );
         // A legitimately grown strip is re-applied on open.
         assert_eq!(
