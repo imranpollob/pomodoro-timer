@@ -9,6 +9,7 @@ A local desktop focus timer for Windows, macOS, and Linux, built with Tauri 2, R
 - To do / In progress / Done tasks. Choose a task before starting; saved sessions retain its title after edits or removal.
 - Local-date session reports, a three-month task-completion heatmap, and a current streak. Reset reports deletes sessions and completion history while keeping the task board.
 - Light/dark themes, completion sound and volume, notifications, pinning, and saved window placement.
+- Installed version in Settings, with manual update checks and a link to newer GitHub releases.
 - A single Rust timer authority with transactional persistence, checkpoints, and paused recovery after restart.
 
 ## Run
@@ -56,6 +57,8 @@ sh scripts/fix_deb_depends.sh target/release/bundle/deb/*.deb
 ```
 
 CI validates and builds all three platforms on `v*` tags or manual dispatch. It uploads package artifacts; it does not publish a GitHub Release. Commits, tags, and pushes are managed by the repository owner.
+
+Settings → About shows the installed version. **Check for updates** compares it with the latest published stable GitHub Release. When a newer version is available, **View release** opens its GitHub page in your browser so you can download and run the installer for your platform. Checks run only when requested and require an internet connection; draft releases, prereleases, and CI artifacts are not offered as updates.
 
 For native IPC checks, build a separate test executable with an isolated temporary profile:
 

@@ -13,6 +13,7 @@
   import Compact from './parts/Compact.svelte';
   import Icon from './parts/Icon.svelte';
   import TaskPicker from './parts/TaskPicker.svelte';
+  import AppUpdates from './parts/AppUpdates.svelte';
 
   const navigation = [
     { id: 'timer', label: 'Timer', icon: 'timer' },
@@ -662,6 +663,7 @@
           <p class="muted">Delete every saved session and task completion. Reports and the streak will be cleared; your task board will stay as it is. This cannot be undone.</p>
           <div class="form-actions"><button class="secondary danger" type="button" onclick={() => void resetReports()}>Reset reports</button></div>
         </section>
+        <AppUpdates />
       {/if}
     </main>
   </div>

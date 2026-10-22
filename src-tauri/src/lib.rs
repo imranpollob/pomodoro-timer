@@ -17,6 +17,7 @@ mod geometry;
 mod menubar;
 #[cfg(windows)]
 mod power;
+mod updates;
 use controls::{Controls, DesktopState, Preferences};
 
 fn report_error(app: &tauri::AppHandle, message: &str) {
@@ -416,6 +417,7 @@ pub fn run() {
             let _ = show_main(app);
         }))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             timer_command,
@@ -438,6 +440,9 @@ pub fn run() {
             save_desktop_preferences,
             timer_defaults,
             desktop_defaults,
+            updates::get_app_version,
+            updates::check_for_updates,
+            updates::open_release_page,
             report_desktop_error
         ])
         .setup(|app| {

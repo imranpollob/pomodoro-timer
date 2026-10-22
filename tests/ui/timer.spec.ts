@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-async function mockDesktop(page: Page, options: { seconds: number; emptyReports?: boolean; recovered?: boolean; interruption?: string | null; opacity?: number; lastRecord?: boolean; platform?: string; failTaskStatusOnce?: boolean; taskTitle?: string; denseHistory?: boolean; extraTasks?: number; resizeDelay?: number } = { seconds: 1500 }) {
+async function mockDesktop(page: Page, options: { seconds: number; emptyReports?: boolean; recovered?: boolean; interruption?: string | null; opacity?: number; lastRecord?: boolean; platform?: string; failTaskStatusOnce?: boolean; taskTitle?: string; denseHistory?: boolean; extraTasks?: number; resizeDelay?: number; appVersion?: string; updateResponses?: ('current' | 'available' | 'none' | 'error')[]; updateDelay?: number; failOpenReleaseOnce?: boolean } = { seconds: 1500 }) {
   await page.addInitScript(options => {
     (window as unknown as { isTauri: boolean }).isTauri = true;
     const callbacks = new Map<number, (value: unknown) => void>();
@@ -50,6 +50,8 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
     };
     let finishCount = 0;
     let failTaskStatus = options.failTaskStatusOnce ?? false;
+    const updateResponses = [...(options.updateResponses ?? [])];
+    let failOpenRelease = options.failOpenReleaseOnce ?? false;
     (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
       transformCallback(callback: (value: unknown) => void) { callbacks.set(++callbackId, callback); return callbackId; },
       unregisterCallback(id: number) { callbacks.delete(id); },
@@ -75,6 +77,19 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
         }
         if (command === 'get_snapshot') return structuredClone(state);
         if (command === 'get_desktop_state') return structuredClone(desktop);
+        if (command === 'get_app_version') return options.appVersion ?? '1.2.0';
+        if (command === 'check_for_updates') {
+          (window as any).__updateCheckCalls = ((window as any).__updateCheckCalls ?? 0) + 1;
+          if (options.updateDelay) await new Promise(resolve => setTimeout(resolve, options.updateDelay));
+          const response = updateResponses.shift() ?? 'current';
+          if (response === 'error') throw 'Could not check for updates. Check your internet connection and try again.';
+          return { current_version: options.appVersion ?? '1.2.0', latest_version: response === 'none' ? null : response === 'available' ? '1.3.0' : options.appVersion ?? '1.2.0', update_available: response === 'available' };
+        }
+        if (command === 'open_release_page') {
+          if (failOpenRelease) { failOpenRelease = false; throw 'Could not open your browser. Please try again.'; }
+          (window as any).__releasePageOpens = ((window as any).__releasePageOpens ?? 0) + 1;
+          return;
+        }
         if (command === 'timer_defaults') return { focus_minutes: 25, short_break_minutes: 5, long_break_minutes: 15, long_break_interval: 4, sound_enabled: true, auto_start_next: false };
         if (command === 'desktop_defaults') return { volume: 60, theme: 'dark', opacity_percent: 100, pinned: true, notifications: true, close_to_tray: true, menu_bar_visible: true, dock_hidden: false };
         if (command === 'list_tasks') return structuredClone(tasks);
@@ -828,13 +843,70 @@ test('reports roll forward after midnight and refresh on resume without changing
   await expect(page.getByLabel('Report end date')).toHaveValue('2026-10-05');
 });
 
-test('settings groups put destructive reset after everyday preferences', async ({ page }) => {
+test('settings groups put About last after data and reset', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.locator('.settings-card h2')).toHaveText(['Timer', 'Sound & notifications', 'Appearance & compact', 'Data & reset']);
+  await expect(page.locator('.settings-card h2')).toHaveText(['Timer', 'Sound & notifications', 'Appearance & compact', 'Data & reset', 'About']);
   await page.getByLabel('Play a completion tone').check();
   await expect(page.locator('.sound-settings').getByRole('status')).toHaveText('Saved');
   await page.getByRole('button', { name: 'Reset reports', exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('button', { name: 'Reset reports', exact: true })).toHaveClass(/danger/);
   await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+});
+
+test('settings shows the installed version and checks for updates only on request', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, appVersion: '7.4.2', updateDelay: 500 }); await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const about = page.getByRole('region', { name: 'About', exact: true });
+  await expect(about.getByText('Version 7.4.2', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__updateCheckCalls ?? 0)).toBe(0);
+  await about.getByRole('button', { name: 'Check for updates', exact: true }).click();
+  await expect(about.getByRole('button', { name: 'Checking…', exact: true })).toBeDisabled();
+  await expect(about.getByRole('status')).toHaveText('Checking for updates…');
+  await expect(about.getByRole('status')).toHaveText('You’re up to date.');
+  await expect(about.getByRole('button', { name: 'Check for updates', exact: true })).toBeEnabled();
+  await expect(about.getByRole('button', { name: 'View release', exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__updateCheckCalls)).toBe(1);
+});
+
+test('an available update opens its release page and browser errors can be retried', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, updateResponses: ['available'], failOpenReleaseOnce: true }); await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const about = page.getByRole('region', { name: 'About', exact: true });
+  await about.getByRole('button', { name: 'Check for updates', exact: true }).click();
+  await expect(about.getByRole('status')).toHaveText('Version 1.3.0 is available.');
+  await expect(about.getByText('Version 1.2.0', { exact: true })).toBeVisible();
+  for (const theme of ['dark', 'light']) {
+    await page.getByLabel('Appearance theme').selectOption(theme);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await about.screenshot({ path: `test-results/settings-about-${theme}.png` });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(960);
+  }
+  await about.getByRole('button', { name: 'View release', exact: true }).click();
+  await expect(about.getByRole('alert')).toHaveText('Could not open your browser. Please try again.');
+  await about.getByRole('button', { name: 'View release', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__releasePageOpens ?? 0)).toBe(1);
+  await expect(about.getByRole('alert')).toHaveCount(0);
+});
+
+test('failed update checks can be retried without blocking settings autosave', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, updateResponses: ['error', 'current'] }); await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const about = page.getByRole('region', { name: 'About', exact: true });
+  await about.getByRole('button', { name: 'Check for updates', exact: true }).click();
+  await expect(about.getByRole('alert')).toContainText('Check your internet connection and try again.');
+  await page.getByLabel('Keep compact timer on top').uncheck();
+  await expect(page.locator('.desktop-settings').getByRole('status')).toHaveText('Saved');
+  await about.getByRole('button', { name: 'Check for updates', exact: true }).click();
+  await expect(about.getByRole('status')).toHaveText('You’re up to date.');
+  await expect(about.getByRole('alert')).toHaveCount(0);
+});
+
+test('update checks explain when no stable release is published', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, updateResponses: ['none'] }); await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const about = page.getByRole('region', { name: 'About', exact: true });
+  await about.getByRole('button', { name: 'Check for updates', exact: true }).click();
+  await expect(about.getByRole('status')).toHaveText('No published releases are available yet.');
+  await expect(about.getByRole('button', { name: 'View release', exact: true })).toHaveCount(0);
 });
