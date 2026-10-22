@@ -1071,7 +1071,7 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "focus-core"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "rusqlite",
  "serde",
@@ -2786,7 +2786,7 @@ dependencies = [
 
 [[package]]
 name = "pomodoro-desktop"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "focus-core",
  "objc2-app-kit",
