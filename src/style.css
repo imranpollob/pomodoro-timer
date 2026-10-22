@@ -234,6 +234,7 @@ input[type=number] { width: 100px; }
 .update-status:empty { display: none; }
 .update-error { margin-top: 12px; color: var(--danger); }
 .about-settings { border-bottom: 0; }
+.account-email { margin-top: 12px; overflow-wrap: anywhere; }
 .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
 .empty-state h2, .empty-state h3 { margin: 16px 0; }
 .empty-state p { margin: 12px 0 22px; }

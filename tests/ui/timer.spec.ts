@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-async function mockDesktop(page: Page, options: { seconds: number; emptyReports?: boolean; recovered?: boolean; interruption?: string | null; opacity?: number; lastRecord?: boolean; platform?: string; failTaskStatusOnce?: boolean; taskTitle?: string; denseHistory?: boolean; extraTasks?: number; resizeDelay?: number; appVersion?: string; updateResponses?: ('current' | 'available' | 'none' | 'error')[]; updateDelay?: number; failOpenReleaseOnce?: boolean } = { seconds: 1500 }) {
+async function mockDesktop(page: Page, options: { seconds: number; emptyReports?: boolean; recovered?: boolean; interruption?: string | null; opacity?: number; lastRecord?: boolean; platform?: string; failTaskStatusOnce?: boolean; taskTitle?: string; denseHistory?: boolean; extraTasks?: number; resizeDelay?: number; appVersion?: string; updateResponses?: ('current' | 'available' | 'none' | 'error')[]; updateDelay?: number; failOpenReleaseOnce?: boolean; syncConfigured?: boolean; accountEmail?: string; failSyncOnce?: boolean } = { seconds: 1500 }) {
   await page.addInitScript(options => {
     (window as unknown as { isTauri: boolean }).isTauri = true;
     const callbacks = new Map<number, (value: unknown) => void>();
@@ -42,6 +42,12 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
       }
     }
     const listeners = new Map<string, number>();
+    (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+      unregisterListener(event: string, id: number) {
+        if (listeners.get(event) === id) listeners.delete(event);
+        callbacks.delete(id);
+      },
+    };
     (window as any).__setSeconds = (seconds: number) => {
       state.display_seconds = seconds;
       state.revision++;
@@ -52,6 +58,23 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
     let failTaskStatus = options.failTaskStatusOnce ?? false;
     const updateResponses = [...(options.updateResponses ?? [])];
     let failOpenRelease = options.failOpenReleaseOnce ?? false;
+    let failSync = options.failSyncOnce ?? false;
+    const account = { revision: 0, configured: options.syncConfigured ?? false, email: options.accountEmail ?? null,
+      busy: false, signing_in: false, last_synced_ms: null as number | null,
+      message: 'Sign in to sync your tasks across devices.', error: null as string | null };
+    function publishAccount() {
+      account.revision++;
+      const handler = listeners.get('sync-state');
+      if (handler) callbacks.get(handler)?.({ payload: structuredClone(account), id: handler, event: 'sync-state' });
+    }
+    (window as any).__finishBackgroundSync = () => {
+      account.error = null; account.message = 'All tasks are synced.'; account.last_synced_ms = Date.now(); publishAccount();
+    };
+    (window as any).__deliverRemoteTask = () => {
+      tasks.push({ id: 'remote-task', title: 'Task from another device', status: 'todo', created_unix_ms: started, updated_unix_ms: started });
+      const handler = listeners.get('tasks-synced');
+      if (handler) callbacks.get(handler)?.({ payload: null, id: handler, event: 'tasks-synced' });
+    };
     (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
       transformCallback(callback: (value: unknown) => void) { callbacks.set(++callbackId, callback); return callbackId; },
       unregisterCallback(id: number) { callbacks.delete(id); },
@@ -78,6 +101,37 @@ async function mockDesktop(page: Page, options: { seconds: number; emptyReports?
         if (command === 'get_snapshot') return structuredClone(state);
         if (command === 'get_desktop_state') return structuredClone(desktop);
         if (command === 'get_app_version') return options.appVersion ?? '1.2.0';
+        if (command === 'get_account_state') return structuredClone(account);
+        if (command === 'sign_in_with_google') {
+          account.busy = true; account.signing_in = true; account.error = null;
+          account.message = 'Finish signing in with Google in your browser.'; publishAccount();
+          return new Promise((resolve, reject) => {
+            (window as any).__completeGoogleSignIn = () => {
+              account.email = 'focus@example.com'; account.busy = false; account.signing_in = false;
+              account.message = 'All tasks are synced.'; account.last_synced_ms = Date.now(); publishAccount(); resolve(structuredClone(account));
+            };
+            (window as any).__cancelGoogleSignIn = () => {
+              account.busy = false; account.signing_in = false; account.error = 'Google sign-in was cancelled.';
+              publishAccount(); reject(account.error);
+            };
+          });
+        }
+        if (command === 'cancel_google_sign_in') { (window as any).__cancelGoogleSignIn?.(); return; }
+        if (command === 'sync_tasks_now') {
+          account.error = null; account.busy = true; publishAccount();
+          await new Promise(resolve => setTimeout(resolve, 150));
+          account.busy = false;
+          if (failSync) {
+            failSync = false; account.error = 'Tasks are saved on this device. Sync will retry when your connection returns.';
+            publishAccount(); throw account.error;
+          }
+          account.message = 'All tasks are synced.'; account.last_synced_ms = Date.now(); publishAccount();
+          return structuredClone(account);
+        }
+        if (command === 'sign_out_account') {
+          account.email = null; account.last_synced_ms = null; account.message = 'Signed out. Your tasks remain on this device.';
+          publishAccount(); return structuredClone(account);
+        }
         if (command === 'check_for_updates') {
           (window as any).__updateCheckCalls = ((window as any).__updateCheckCalls ?? 0) + 1;
           if (options.updateDelay) await new Promise(resolve => setTimeout(resolve, options.updateDelay));
@@ -846,7 +900,7 @@ test('reports roll forward after midnight and refresh on resume without changing
 test('settings groups put About last after data and reset', async ({ page }) => {
   await mockDesktop(page); await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.locator('.settings-card h2')).toHaveText(['Timer', 'Sound & notifications', 'Appearance & compact', 'Data & reset', 'About']);
+  await expect(page.locator('.settings-card h2')).toHaveText(['Timer', 'Sound & notifications', 'Appearance & compact', 'Account & sync', 'Data & reset', 'About']);
   await page.getByLabel('Play a completion tone').check();
   await expect(page.locator('.sound-settings').getByRole('status')).toHaveText('Saved');
   await page.getByRole('button', { name: 'Reset reports', exact: true }).click();
@@ -909,4 +963,70 @@ test('update checks explain when no stable release is published', async ({ page 
   await about.getByRole('button', { name: 'Check for updates', exact: true }).click();
   await expect(about.getByRole('status')).toHaveText('No published releases are available yet.');
   await expect(about.getByRole('button', { name: 'View release', exact: true })).toHaveCount(0);
+});
+
+test('unconfigured cloud sync keeps tasks local and sign-in disabled', async ({ page }) => {
+  await mockDesktop(page); await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const account = page.getByRole('region', { name: 'Account & sync', exact: true });
+  await expect(account.getByRole('button', { name: 'Sign in with Google', exact: true })).toBeDisabled();
+  await expect(account).toContainText('Google sign-in is not enabled in this build.');
+  await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+  await expect(page.locator('.task-item-card').filter({ hasText: 'Write tests' })).toBeVisible();
+});
+
+test('Google sign-in can be cancelled, retried and completed', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, syncConfigured: true }); await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const account = page.getByRole('region', { name: 'Account & sync', exact: true });
+  await account.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+  await expect(account.getByRole('status')).toContainText('Finish signing in with Google in your browser.');
+  await account.getByRole('button', { name: 'Cancel sign-in', exact: true }).click();
+  await expect(account.getByRole('alert')).toHaveText('Google sign-in was cancelled.');
+  await account.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+  await page.evaluate(() => (window as any).__completeGoogleSignIn());
+  await expect(account).toContainText('Signed in as focus@example.com');
+  await expect(account.getByRole('alert')).toHaveCount(0);
+  await expect(account.getByRole('button', { name: 'Sync now', exact: true })).toBeEnabled();
+  for (const theme of ['dark', 'light']) {
+    await page.getByLabel('Appearance theme').selectOption(theme);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await account.screenshot({ path: `test-results/settings-account-${theme}.png` });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(960);
+  }
+});
+
+test('task sync errors are retryable and do not block preference saves', async ({ page }) => {
+  await mockDesktop(page, { seconds: 1500, syncConfigured: true, accountEmail: 'focus@example.com', failSyncOnce: true }); await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const account = page.getByRole('region', { name: 'Account & sync', exact: true });
+  await account.getByRole('button', { name: 'Sync now', exact: true }).click();
+  await expect(account.getByRole('button', { name: 'Syncing…', exact: true })).toBeDisabled();
+  await expect(account.getByRole('alert')).toContainText('Tasks are saved on this device.');
+  await page.getByLabel('Keep compact timer on top').uncheck();
+  await expect(page.locator('.desktop-settings').getByRole('status')).toHaveText('Saved');
+  await page.evaluate(() => (window as any).__finishBackgroundSync());
+  await expect(account.getByRole('alert')).toHaveCount(0);
+  await account.getByRole('button', { name: 'Sync now', exact: true }).click();
+  await expect(account.getByRole('status')).toHaveText('All tasks are synced.');
+  await expect(account.getByRole('alert')).toHaveCount(0);
+  await expect(account).toContainText('Last synced');
+});
+
+test('signing out retains local tasks and synced changes refresh the task board', async ({ page }) => {
+  const browserErrors: Error[] = [];
+  page.on('pageerror', error => browserErrors.push(error));
+  await mockDesktop(page, { seconds: 1500, syncConfigured: true, accountEmail: 'focus@example.com' }); await page.goto('/');
+  await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+  await page.evaluate(() => (window as any).__deliverRemoteTask());
+  await expect(page.locator('.task-item-card').filter({ hasText: 'Task from another device' })).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const account = page.getByRole('region', { name: 'Account & sync', exact: true });
+  await account.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(account.getByRole('status')).toHaveText('Signed out. Your tasks remain on this device.');
+  await expect(account.getByRole('button', { name: 'Sign in with Google', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+  await expect(page.locator('.task-item-card').filter({ hasText: 'Write tests' })).toBeVisible();
+  await expect(page.locator('.task-item-card').filter({ hasText: 'Task from another device' })).toBeVisible();
+  expect(browserErrors).toEqual([]);
 });

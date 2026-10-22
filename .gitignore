@@ -15,6 +15,7 @@ dist/
 playwright-report/
 test-results/
 .demo-profile/
+.env.local
 
 # Packaging outputs
 build/

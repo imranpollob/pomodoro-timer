@@ -14,6 +14,7 @@
   import Icon from './parts/Icon.svelte';
   import TaskPicker from './parts/TaskPicker.svelte';
   import AppUpdates from './parts/AppUpdates.svelte';
+  import AccountSync from './parts/AccountSync.svelte';
 
   const navigation = [
     { id: 'timer', label: 'Timer', icon: 'timer' },
@@ -138,7 +139,12 @@
   let dismissedRecovery = $state(false);
   let dismissedInterruption = $state(false);
   let lastInterruption = $state<string | null>(null);
-  async function loadTasks() { tasks = await invoke<Task[]>('list_tasks'); }
+  let taskLoadGeneration = 0;
+  async function loadTasks() {
+    const generation = ++taskLoadGeneration;
+    const incoming = await invoke<Task[]>('list_tasks');
+    if (generation === taskLoadGeneration) tasks = incoming;
+  }
   async function loadTaskCompletionEvents() { taskCompletionEvents = await invoke<TaskCompletionEvent[]>('task_completion_events'); }
   async function loadToday() {
     const now = new Date();
@@ -467,6 +473,8 @@
         if (disposed) { desktopStop(); return; } else listeners.push(desktopStop);
         acceptDesktop(await invoke<DesktopState>('get_desktop_state'));
         if (!compact) {
+          const syncedStop = await listen('tasks-synced', () => { void loadTasks().catch(reportError); });
+          if (disposed) syncedStop(); else listeners.push(syncedStop);
           const stop = await listen('finish-requested', () => { if (snapshot?.status !== 'idle' && !snapshot?.pending_save) finishDialog?.showModal(); });
           if (disposed) stop(); else listeners.push(stop);
           const errorStop = await listen<string>('desktop-error', event => { error = event.payload; });
@@ -658,6 +666,7 @@
             </section>
           {/if}
         </form>
+        <AccountSync />
         <section class="settings-card data-settings">
           <div class="card-title"><Icon name="history" /><h2>Data &amp; reset</h2></div>
           <p class="muted">Delete every saved session and task completion. Reports and the streak will be cleared; your task board will stay as it is. This cannot be undone.</p>

@@ -1,6 +1,7 @@
 //! Clock-injected timer domain and transactional persistence.
 pub mod service;
 pub mod store;
+pub mod sync;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

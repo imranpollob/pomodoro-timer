@@ -3,7 +3,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 
 pub struct Store {
-    connection: Connection,
+    pub(crate) connection: Connection,
 }
 
 impl Store {
@@ -24,7 +24,7 @@ impl Store {
         let version: u32 = connection
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(|e| e.to_string())?;
-        if version > 4 {
+        if version > 5 {
             return Err("Database was created by a newer app; it was left intact.".into());
         }
         if version == 0 {
@@ -78,6 +78,21 @@ impl Store {
                     COMMIT;",
                 )
                 .map_err(|e| e.to_string())?;
+        }
+        if version < 5 {
+            connection.execute_batch("BEGIN IMMEDIATE;
+                ALTER TABLE tasks ADD COLUMN sync_version INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE tasks ADD COLUMN sync_dirty INTEGER NOT NULL DEFAULT 1;
+                ALTER TABLE tasks ADD COLUMN sync_change_id TEXT NOT NULL DEFAULT '';
+                CREATE TABLE task_sync_attempts (task_id TEXT PRIMARY KEY, change_id TEXT NOT NULL, payload TEXT NOT NULL);
+                UPDATE tasks SET sync_change_id=lower(hex(randomblob(16)));
+                CREATE TRIGGER tasks_sync_insert AFTER INSERT ON tasks BEGIN
+                    UPDATE tasks SET sync_dirty=1, sync_change_id=lower(hex(randomblob(16))) WHERE id=NEW.id;
+                END;
+                CREATE TRIGGER tasks_sync_update AFTER UPDATE OF title, status, deleted ON tasks BEGIN
+                    UPDATE tasks SET sync_dirty=1, sync_change_id=lower(hex(randomblob(16))) WHERE id=NEW.id;
+                END;
+                PRAGMA user_version=5; COMMIT;").map_err(|e| e.to_string())?;
         }
         Ok(Self { connection })
     }
@@ -463,7 +478,7 @@ mod tests {
                 .connection
                 .query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
                 .unwrap(),
-            4
+            5
         );
         drop(store);
         std::fs::remove_file(path).unwrap();

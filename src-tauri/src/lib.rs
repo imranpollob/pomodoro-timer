@@ -10,6 +10,7 @@ use tauri::{
     tray::TrayIconBuilder,
 };
 use tauri_plugin_notification::NotificationExt;
+mod account;
 mod audio;
 mod controls;
 mod geometry;
@@ -64,11 +65,21 @@ async fn list_tasks(service: State<'_, TimerService>) -> Result<Vec<Task>, Strin
 }
 
 #[tauri::command]
-async fn create_task(title: String, service: State<'_, TimerService>) -> Result<Task, String> {
+async fn create_task(
+    title: String,
+    service: State<'_, TimerService>,
+    app: tauri::AppHandle,
+) -> Result<Task, String> {
     let service = service.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || service.create_task(title))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = service.create_task(title);
+        if result.is_ok() {
+            app.state::<Arc<account::AccountService>>().wake();
+        }
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -76,11 +87,18 @@ async fn rename_task(
     id: String,
     title: String,
     service: State<'_, TimerService>,
+    app: tauri::AppHandle,
 ) -> Result<Task, String> {
     let service = service.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || service.rename_task(id, title))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = service.rename_task(id, title);
+        if result.is_ok() {
+            app.state::<Arc<account::AccountService>>().wake();
+        }
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -88,11 +106,18 @@ async fn set_task_status(
     id: String,
     status: TaskStatus,
     service: State<'_, TimerService>,
+    app: tauri::AppHandle,
 ) -> Result<Task, String> {
     let service = service.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || service.set_task_status(id, status))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = service.set_task_status(id, status);
+        if result.is_ok() {
+            app.state::<Arc<account::AccountService>>().wake();
+        }
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -106,11 +131,21 @@ async fn task_completion_events(
 }
 
 #[tauri::command]
-async fn delete_task(id: String, service: State<'_, TimerService>) -> Result<(), String> {
+async fn delete_task(
+    id: String,
+    service: State<'_, TimerService>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     let service = service.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || service.delete_task(id))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = service.delete_task(id);
+        if result.is_ok() {
+            app.state::<Arc<account::AccountService>>().wake();
+        }
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -443,6 +478,11 @@ pub fn run() {
             updates::get_app_version,
             updates::check_for_updates,
             updates::open_release_page,
+            account::get_account_state,
+            account::sign_in_with_google,
+            account::cancel_google_sign_in,
+            account::sync_tasks_now,
+            account::sign_out_account,
             report_desktop_error
         ])
         .setup(|app| {
@@ -500,6 +540,11 @@ pub fn run() {
             app.manage(audio::AudioService::start()?);
             app.manage(geometry);
             app.manage(service);
+            app.manage(account::AccountService::start(
+                app.handle().clone(),
+                app.state::<TimerService>().inner().clone(),
+                &path,
+            )?);
             for (label, placement) in placements {
                 if let Some(window) = app.get_webview_window(&label) {
                     geometry::restore(&window, &placement)?;

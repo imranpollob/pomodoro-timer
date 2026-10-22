@@ -2,6 +2,7 @@
 use crate::{
     Command, Engine, Record, Task, TaskCompletionEvent, TaskStatus, TimerView,
     store::{DailyTotals, Store},
+    sync::{SyncBatch, SyncReply},
 };
 use serde::Serialize;
 use std::{
@@ -64,6 +65,8 @@ enum Request {
     DailyTotals(u64, u64, mpsc::Sender<Result<DailyTotals, String>>),
     ReportRecords(u64, u64, mpsc::Sender<Result<Vec<Record>, String>>),
     ResetReports(mpsc::Sender<Result<Snapshot, String>>),
+    SyncBatch(String, mpsc::Sender<Result<SyncBatch, String>>),
+    ApplyTaskSync(String, SyncReply, mpsc::Sender<Result<(), String>>),
 }
 
 #[derive(Clone)]
@@ -107,6 +110,35 @@ impl TimerService {
                     };
                     let mut interrupted_at = None;
                     match request.take() {
+                        Some(Request::SyncBatch(account, reply)) => {
+                            let _ = reply.send(store.sync_batch(&account));
+                            continue;
+                        }
+                        Some(Request::ApplyTaskSync(account, changes, reply)) => {
+                            if pending.is_some() {
+                                let _ = reply.send(Err(
+                                    "Retry the pending session save before syncing tasks.".into(),
+                                ));
+                                continue;
+                            }
+                            let result = store
+                                .apply_task_sync(&account, &changes, &engine, clock.monotonic_ms())
+                                .map(|candidate| {
+                                    engine = candidate;
+                                    revision += 1;
+                                    publish(Snapshot {
+                                        timer: engine.view(clock.monotonic_ms()),
+                                        revision,
+                                        recovered,
+                                        pending_save: false,
+                                        last_error: last_error.clone(),
+                                        records: records.clone(),
+                                        interruption: interruption.clone(),
+                                    });
+                                });
+                            let _ = reply.send(result);
+                            continue;
+                        }
                         Some(Request::ReadPreference(key, reply)) => {
                             let _ = reply.send(store.preference(&key));
                             continue;
@@ -402,6 +434,24 @@ impl TimerService {
         receive
             .recv_timeout(Duration::from_secs(10))
             .map_err(|e| e.to_string())
+    }
+    pub fn sync_batch(&self, account: String) -> Result<SyncBatch, String> {
+        let (send, receive) = mpsc::channel();
+        self.sender
+            .send(Request::SyncBatch(account, send))
+            .map_err(|e| e.to_string())?;
+        receive
+            .recv_timeout(Duration::from_secs(10))
+            .map_err(|e| e.to_string())?
+    }
+    pub fn apply_task_sync(&self, account: String, reply: SyncReply) -> Result<(), String> {
+        let (send, receive) = mpsc::channel();
+        self.sender
+            .send(Request::ApplyTaskSync(account, reply, send))
+            .map_err(|e| e.to_string())?;
+        receive
+            .recv_timeout(Duration::from_secs(10))
+            .map_err(|e| e.to_string())?
     }
     pub fn command(&self, command: Command) -> Result<Snapshot, String> {
         let (send, receive) = mpsc::channel();

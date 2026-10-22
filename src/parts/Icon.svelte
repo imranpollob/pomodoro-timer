@@ -5,6 +5,7 @@
     chart: 'M4 4v16h16M8 20v-9M12 20V8M16 20v-7',
     settings: 'M4 7h16M4 17h16M8 4v6M16 14v6',
     info: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM12 11v6M12 7h.01',
+    account: 'M20 21v-2a7 7 0 0 0-14 0v2M13 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
     compact: 'M4 4h16v16H4ZM8 13h8v4H8Z',
     play: 'M8 5v14l11-7Z', pause: 'M8 5v14M16 5v14',
     finish: 'M6 6h12v12H6Z', check: 'M5 12l4 4L19 6',
