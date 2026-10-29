@@ -22,7 +22,7 @@ pub fn start(app: tauri::AppHandle) {
         let result = probe(&app);
         let payload = match &result {
             Ok(()) => {
-                serde_json::json!({"passed": true, "checks": ["main/compact rendered controls and real IPC", "compact control bounds and hit testing at zero and long hours", "finish dialog", "SQLite completion/checkpoint", "native pinning", "placement persistence/clamping", "desktop preference persistence", "Windows suspend/lock (Windows only)"]})
+                serde_json::json!({"passed": true, "checks": ["main/compact rendered controls and real IPC", "compact control bounds and hit testing at zero and long hours", "finish dialog", "SQLite completion/checkpoint", "native pinning", "placement persistence/clamping", "desktop preference persistence", "multiline task editor and persisted newlines", "Windows suspend/lock (Windows only)"]})
             }
             Err(error) => serde_json::json!({"passed": false, "error": error}),
         };
@@ -124,12 +124,12 @@ fn probe(app: &tauri::AppHandle) -> Result<(), String> {
         if (document.querySelector('.compact').dataset.compactUi !== '2') throw Error('Compact rewrite was not loaded');
         const digits = document.querySelector('.compact-digits');
         const original = digits.textContent;
-        for (const display of ['00:00', '10000:00:01', original]) {
+        for (const display of ['00:00', '59:59', '1:00:00', '99:59:59', '10000:00:01', original]) {
         digits.textContent = display;
         await until(() => {
             const stripWidth = document.querySelector('.compact').getBoundingClientRect().width;
             const timeWidth = document.querySelector('.compact-time').getBoundingClientRect().width;
-            return innerWidth === Math.max(170, Math.ceil(digits.getBoundingClientRect().width + stripWidth - timeWidth + 2));
+            return innerWidth === Math.max(210, Math.ceil(digits.getBoundingClientRect().width + stripWidth - timeWidth + 2));
         });
         const strip = document.querySelector('.compact').getBoundingClientRect();
         const time = document.querySelector('.compact-time').getBoundingClientRect();
@@ -168,6 +168,57 @@ fn probe(app: &tauri::AppHandle) -> Result<(), String> {
     )?;
     dispatch_menu(app, "sound");
     app.state::<audio::AudioService>().play(0)?;
+    ui_step(
+        app,
+        "main",
+        r#"Array.from(document.querySelectorAll('nav button')).find(b => b.textContent.trim() === 'Tasks').click();
+        await until(() => document.querySelector('#new-task-title'));
+        const input = document.querySelector('#new-task-title');
+        input.value = 'Read the complete task description and review each item carefully. '.repeat(5);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.form.requestSubmit();
+        await until(() => document.querySelector('.task-card-controls button'));
+        document.querySelector('.task-card-controls button').click();
+        await until(() => document.querySelector('.task-edit textarea'));
+        const editor = document.querySelector('.task-edit textarea');
+        await until(() => editor.clientHeight >= editor.scrollHeight);
+        if (editor.value.length < 300 || editor.clientWidth < editor.scrollWidth) throw Error('Multiline editor clipped the full task');
+        editor.value += '\nAdditional details.';
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        document.querySelector('.task-edit').requestSubmit();
+        await until(() => document.querySelector('.task-card-title strong')?.textContent.includes('\nAdditional details.'));
+        const label = document.querySelector('.task-card-title strong');
+        if (getComputedStyle(label).whiteSpace !== 'pre-wrap') throw Error('Task card lost multiline formatting');"#,
+    )?;
+    if !service
+        .tasks()?
+        .iter()
+        .any(|saved| saved.title.ends_with("\nAdditional details."))
+    {
+        return Err("Multiline task edit did not persist".into());
+    }
+    service.command(Command::Finish)?;
+    service.command(Command::SetMode {
+        mode: focus_core::Phase::Focus,
+    })?;
+    ui_step(
+        app,
+        "main",
+        r#"Array.from(document.querySelectorAll('nav button')).find(b => b.textContent.trim() === 'Timer').click();
+        await until(() => document.querySelector('.task-picker-trigger'));
+        document.querySelector('.task-picker-trigger').click();
+        await until(() => document.querySelectorAll('.task-picker-option').length > 1);
+        const option = Array.from(document.querySelectorAll('.task-picker-option')).find(o => o.textContent.includes('Read the complete task'));
+        if (option.scrollWidth > option.clientWidth) throw Error('Task option clipped horizontally');
+        option.click();
+        await until(() => document.querySelector('.task-picker-trigger').textContent.includes('Additional details.'));
+        const selected = document.querySelector('.task-picker-trigger > span');
+        if (selected.clientHeight < selected.scrollHeight || selected.clientWidth < selected.scrollWidth) throw Error('Selected task clipped');
+        document.querySelector('.timer-actions .primary').click();
+        await until(() => document.querySelector('.active-task strong')?.textContent.includes('Additional details.'));
+        const active = document.querySelector('.active-task');
+        if (active.clientHeight < active.scrollHeight) throw Error('Active task clipped');"#,
+    )?;
     if std::env::var_os("POMODORO_SMOKE_HOLD_OPEN").is_some() {
         // Hold the mapped windows briefly so the external Linux geometry
         // sampler observes the compact strip instead of racing its exit.
@@ -204,7 +255,10 @@ fn ui_step(app: &tauri::AppHandle, label: &str, script: &str) -> Result<(), Stri
     app.unlisten(listener);
     let payload = result?;
     if serde_json::from_str::<String>(&payload).map_err(|e| e.to_string())? != "ok" {
-        return Err(payload);
+        return Err(format!(
+            "{label} step {name}: {payload}; script: {}",
+            script.chars().take(100).collect::<String>()
+        ));
     }
     Ok(())
 }

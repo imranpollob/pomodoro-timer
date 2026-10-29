@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { invoke, listen } from '../lib/desktop';
   import { actionLabel, formatTime, phaseLabel, type Snapshot } from '../lib/types';
@@ -20,6 +20,12 @@
   let scheduleMeasure = () => {};
   const display = $derived(formatTime(state.display_seconds));
   const disabled = $derived(busy || state.pending_save);
+
+  $effect(() => {
+    // Re-measure after the displayed time changes, including the hour boundary.
+    void display;
+    void tick().then(() => scheduleMeasure());
+  });
 
   async function native(command: string) {
     try { await invoke(command); }
@@ -105,7 +111,7 @@
         // stays measurable even while the visible time region is clipped.
         const chrome = strip.getBoundingClientRect().width - timeRegion.getBoundingClientRect().width;
         const content = digits.getBoundingClientRect().width;
-        queuedWidth = Math.min(1200, Math.max(170, Math.ceil(content + chrome + 2)));
+        queuedWidth = Math.min(1200, Math.max(210, Math.ceil(content + chrome + 2)));
         void flushSize();
       });
     };

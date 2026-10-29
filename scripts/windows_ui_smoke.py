@@ -77,7 +77,7 @@ def probe(executable, folder):
         dpi = user32.GetDpiForWindow(handle) or 96
         width = (rectangle.right - rectangle.left) * 96 / dpi
         height = (rectangle.bottom - rectangle.top) * 96 / dpi
-        assert abs(width - 170) <= 2 and abs(height - 44) <= 2, (width, height, dpi)
+        assert abs(width - 210) <= 2 and abs(height - 44) <= 2, (width, height, dpi)
         checks.append(f"native compact client size {width:g} x {height:g} logical pixels")
         button(compact, "Start focus").invoke()
         button(compact, "Pause").invoke()

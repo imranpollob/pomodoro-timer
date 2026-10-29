@@ -138,7 +138,7 @@ impl GeometryService {
     }
 }
 
-/// Persisted compact size from the windows preference, or 170x44 when the
+/// Persisted compact size from the windows preference, or 210x44 when the
 /// preference is absent, corrupt, or fails validation.
 ///
 /// Only Linux re-applies the size after showing the strip; other platforms
@@ -148,8 +148,8 @@ pub fn compact_size_from_pref(raw: Option<&str>) -> (f64, f64) {
     raw.and_then(|raw| serde_json::from_str::<BTreeMap<String, Placement>>(raw).ok())
         .and_then(|map| map.get("compact").cloned())
         .filter(|placement| placement.validate("compact").is_ok())
-        .map(|placement| (placement.width, placement.height))
-        .unwrap_or((170.0, 44.0))
+        .map(|placement| (placement.width.max(210.0), placement.height))
+        .unwrap_or((210.0, 44.0))
 }
 
 pub fn restore(window: &WebviewWindow, placement: &Placement) -> Result<(), String> {
@@ -157,7 +157,10 @@ pub fn restore(window: &WebviewWindow, placement: &Placement) -> Result<(), Stri
     // The main window has one fixed size from tauri.conf.json, so only its position is restored.
     if window.label() != "main" {
         window
-            .set_size(tauri::LogicalSize::new(placement.width, placement.height))
+            .set_size(tauri::LogicalSize::new(
+                placement.width.max(210.0),
+                placement.height,
+            ))
             .map_err(|e| e.to_string())?;
     }
     ensure_visible(window, Some((placement.x, placement.y)))
@@ -212,21 +215,21 @@ mod tests {
     }
     #[test]
     fn compact_size_pref_falls_back_to_default() {
-        assert_eq!(compact_size_from_pref(None), (170.0, 44.0));
-        assert_eq!(compact_size_from_pref(Some("not json")), (170.0, 44.0));
-        assert_eq!(compact_size_from_pref(Some("{}")), (170.0, 44.0));
+        assert_eq!(compact_size_from_pref(None), (210.0, 44.0));
+        assert_eq!(compact_size_from_pref(Some("not json")), (210.0, 44.0));
+        assert_eq!(compact_size_from_pref(Some("{}")), (210.0, 44.0));
         assert_eq!(
             compact_size_from_pref(Some(
                 r#"{"main":{"x":0,"y":0,"width":960.0,"height":680.0}}"#
             )),
-            (170.0, 44.0)
+            (210.0, 44.0)
         );
         // Invalid sizes never escape validation.
         assert_eq!(
             compact_size_from_pref(Some(
                 r#"{"compact":{"x":0,"y":0,"width":10.0,"height":10.0}}"#
             )),
-            (170.0, 44.0)
+            (210.0, 44.0)
         );
         // A legitimately grown strip is re-applied on open.
         assert_eq!(
@@ -234,6 +237,13 @@ mod tests {
                 r#"{"compact":{"x":0,"y":0,"width":320.0,"height":44.0}}"#
             )),
             (320.0, 44.0)
+        );
+        // Existing profiles keep their position and gain room for HH:MM:SS.
+        assert_eq!(
+            compact_size_from_pref(Some(
+                r#"{"compact":{"x":0,"y":0,"width":170.0,"height":44.0}}"#
+            )),
+            (210.0, 44.0)
         );
     }
     #[test]

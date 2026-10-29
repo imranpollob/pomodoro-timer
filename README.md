@@ -5,9 +5,9 @@ A local desktop focus timer for Windows, macOS, and Linux, built with Tauri 2, R
 ## Features
 
 - Pomodoro and stopwatch modes, editable durations, pause/resume, and confirmed finish or skip.
-- A 170 × 44 compact countdown with play/pause and an options menu. Closing compact keeps the timer running.
+- A 210 × 44 compact countdown with play/pause and an options menu. Closing compact keeps the timer running.
 - To do / In progress / Done tasks. Choose a task before starting; saved sessions retain its title after edits or removal.
-- Local-date session reports, a three-month task-completion heatmap, and a current streak. Reset reports deletes sessions and completion history while keeping the task board.
+- Local-date session reports, a six-month focus-minute heatmap, and a current streak. Reports display whole minutes rounded down on Windows, macOS, and Linux. Green days and streaks require more than five minutes of saved Pomodoro/stopwatch time; break time and task completions do not qualify. Reset reports deletes sessions and completion history while keeping the task board.
 - Light/dark themes, completion sound and volume, notifications, pinning, and saved window placement.
 - Installed version in Settings, with manual update checks and a link to newer GitHub releases.
 - Optional Google sign-in and Supabase sync for tasks and focus history, with durable offline edits and deletions.
@@ -128,7 +128,7 @@ In PowerShell, use `python` and set `$env:POMODORO_DATA_DIR` to the demo profile
 
 ## Desktop behavior and limits
 
-- Windows pauses on native suspend/lock and requires explicit resume. macOS/Linux have no native suspend adapter in v1.0.0.
+- Windows pauses on native suspend/lock and requires explicit resume. Linux pauses on logind sleep/lid-close notifications and requires explicit resume; a delay inhibitor protects the pause checkpoint before sleep. macOS does not yet have a native suspend adapter.
 - Windows/Linux close to tray by default. On macOS, closing the window keeps the app running; use Dock/menu-bar controls to reopen it and Cmd+Q or Quit to exit.
 - Compact options include Close compact, Open main, Pin, and Sound. Drag the time or empty strip to move the window. Escape closes compact; Enter/double-click on the time opens main. Space starts/pauses/resumes. Long stopwatch hours grow the strip automatically.
 - Settings save automatically. Failed session writes remain visible and require retry; a crash can lose time since the last checkpoint.

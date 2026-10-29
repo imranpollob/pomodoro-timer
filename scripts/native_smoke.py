@@ -86,8 +86,8 @@ def main():
             if samples == 0:
                 raise RuntimeError("Compact window never mapped during native smoke.")
             print(f"Compact settled at {settled_geometry[0]}x{settled_geometry[1]} over {samples} samples.", flush=True)
-            if settled_geometry != (170, 44):
-                raise RuntimeError(f"Compact strip settled at {settled_geometry[0]}x{settled_geometry[1]}; want 170x44.")
+            if settled_geometry != (210, 44):
+                raise RuntimeError(f"Compact strip settled at {settled_geometry[0]}x{settled_geometry[1]}; want 210x44.")
 
 if __name__ == "__main__":
     main()

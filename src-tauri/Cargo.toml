@@ -37,6 +37,7 @@ objc2-app-kit = { version = "0.3", features = ["NSWindow"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", features = ["sync-secret-service", "crypto-rust", "vendored"] }
+zbus = { version = "5.19", features = ["blocking-api"] }
 
 [features]
 smoke-test = []

@@ -14,6 +14,8 @@ mod account;
 mod audio;
 mod controls;
 mod geometry;
+#[cfg(target_os = "linux")]
+mod linux_power;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod menubar;
 #[cfg(windows)]
@@ -203,7 +205,7 @@ async fn report_records(
 #[cfg(target_os = "linux")]
 fn size_compact(window: &tauri::WebviewWindow, width: f64, height: f64) -> Result<(), String> {
     window
-        .set_min_size(Some(tauri::LogicalSize::new(170.0, 44.0)))
+        .set_min_size(Some(tauri::LogicalSize::new(210.0, 44.0)))
         .map_err(|e| e.to_string())?;
     window
         .set_max_size(Some(tauri::LogicalSize::new(1200.0, 300.0)))
@@ -294,7 +296,7 @@ fn open_compact(app: tauri::AppHandle) -> Result<(), String> {
             .state::<TimerService>()
             .preference("windows")
             .map(|raw| geometry::compact_size_from_pref(raw.as_deref()))
-            .unwrap_or((170.0, 44.0));
+            .unwrap_or((210.0, 44.0));
         size_compact(&compact, width, height)?;
     }
     let _ = app.emit("compact-shown", ());
@@ -314,7 +316,7 @@ fn close_compact(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn resize_compact(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
-    if !(170.0..=1200.0).contains(&width) || !(44.0..=300.0).contains(&height) {
+    if !(210.0..=1200.0).contains(&width) || !(44.0..=300.0).contains(&height) {
         return Err("Invalid compact size".into());
     }
     let window = app
@@ -568,6 +570,11 @@ pub fn run() {
                 }
             }
             app.state::<Controls>().initialize(app.handle());
+            #[cfg(target_os = "linux")]
+            linux_power::start(
+                app.handle().clone(),
+                app.state::<TimerService>().inner().clone(),
+            );
             #[cfg(windows)]
             match power::PowerListener::start(
                 app.handle().clone(),

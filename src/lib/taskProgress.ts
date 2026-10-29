@@ -1,29 +1,23 @@
-import { localDate, type SessionRecord, type TaskCompletionEvent } from './types';
+import { localDate, type SessionRecord } from './types';
 
-export interface CompletionDay {
+export interface FocusDay {
   day: string;
-  count: number;
   minutes: number;
   date: Date;
 }
 
-export interface CompletionWeek {
-  days: (CompletionDay | null)[];
+export interface FocusWeek {
+  days: (FocusDay | null)[];
   month: string;
 }
 
-export interface CompletionSummary {
-  weeks: CompletionWeek[];
+export interface FocusSummary {
+  weeks: FocusWeek[];
   streak: number;
   total: number;
 }
 
-export function buildCompletionSummary(events: TaskCompletionEvent[], now = new Date(), sessions: SessionRecord[] = []): CompletionSummary {
-  const counts = new Map<string, number>();
-  for (const event of events) {
-    const day = localDate(new Date(event.completed_unix_ms));
-    counts.set(day, (counts.get(day) ?? 0) + 1);
-  }
+export function buildFocusSummary(sessions: SessionRecord[], now = new Date()): FocusSummary {
   const minutes = new Map<string, number>();
   for (const record of sessions) {
     if (record.phase !== 'focus' && record.phase !== 'stopwatch') continue;
@@ -38,11 +32,11 @@ export function buildCompletionSummary(events: TaskCompletionEvent[], now = new 
   start.setMonth(start.getMonth() - 6);
   start.setDate(Math.min(dayOfMonth, new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate()));
 
-  const cells: (CompletionDay | null)[] = Array(start.getDay()).fill(null);
+  const cells: (FocusDay | null)[] = Array(start.getDay()).fill(null);
   const cursor = new Date(start);
   while (cursor <= today) {
     const day = localDate(cursor);
-    cells.push({ day, count: counts.get(day) ?? 0, minutes: minutes.get(day) ?? 0, date: new Date(cursor) });
+    cells.push({ day, minutes: minutes.get(day) ?? 0, date: new Date(cursor) });
     cursor.setDate(cursor.getDate() + 1);
   }
   while (cells.length % 7) cells.push(null);
@@ -55,14 +49,19 @@ export function buildCompletionSummary(events: TaskCompletionEvent[], now = new 
 
   let streak = 0;
   const streakCursor = new Date(today);
-  if (!counts.has(localDate(streakCursor))) streakCursor.setDate(streakCursor.getDate() - 1);
-  while (counts.has(localDate(streakCursor))) {
+  if ((minutes.get(localDate(streakCursor)) ?? 0) <= 5) streakCursor.setDate(streakCursor.getDate() - 1);
+  while ((minutes.get(localDate(streakCursor)) ?? 0) > 5) {
     streak += 1;
     streakCursor.setDate(streakCursor.getDate() - 1);
   }
 
   const startDay = localDate(start);
   const todayDay = localDate(today);
-  const total = [...counts].reduce((sum, [day, count]) => day >= startDay && day <= todayDay ? sum + count : sum, 0);
+  const total = [...minutes].reduce((sum, [day, value]) => day >= startDay && day <= todayDay ? sum + value : sum, 0);
   return { weeks, streak, total };
+}
+
+// The same strict threshold drives both green cells and streak eligibility.
+export function focusLevel(minutes: number): number {
+  return minutes <= 5 ? 0 : minutes <= 25 ? 1 : minutes <= 60 ? 2 : minutes <= 120 ? 3 : 4;
 }
